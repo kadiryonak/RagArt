@@ -210,6 +210,78 @@ class OllamaProvider(BaseLLMProvider):
         return self.generate(f"Please answer this question in Turkish: {question}")
 
 
+class HuggingFaceProvider(BaseLLMProvider):
+    """HuggingFace Inference API provider."""
+    
+    API_URL = "https://router.huggingface.co/hf-inference/models/"
+    
+    def __init__(self, api_key: str, model: str = "mistralai/Mistral-7B-Instruct-v0.3"):
+        """
+        Initialize the HuggingFace provider.
+        
+        Args:
+            api_key: HuggingFace API token
+            model: Model name on HuggingFace
+        """
+        self.api_key = api_key
+        self.model = model
+        self.timeout = 60
+        self.max_tokens = 500
+    
+    def generate(self, prompt: str) -> str:
+        """Generate a response using HuggingFace Inference API."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Format prompt for Mistral Instruct
+            formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+            
+            payload = {
+                "inputs": formatted_prompt,
+                "parameters": {
+                    "max_new_tokens": self.max_tokens,
+                    "temperature": 0.1,
+                    "return_full_text": False
+                }
+            }
+            
+            response = requests.post(
+                f"{self.API_URL}{self.model}",
+                headers=headers,
+                json=payload,
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    return result[0].get("generated_text", "").strip()
+                return str(result)
+            elif response.status_code == 503:
+                # Model is loading
+                return "Model yükleniyor, lütfen birkaç saniye bekleyip tekrar deneyin."
+            else:
+                logger.error(f"{StatusEmoji.ERROR} HuggingFace API error: {response.status_code}")
+                return f"HuggingFace API error: {response.status_code} - {response.text}"
+                
+        except Exception as e:
+            logger.error(f"{StatusEmoji.ERROR} HuggingFace connection error: {e}")
+            return f"HuggingFace connection error: {e}"
+    
+    def generate_general(self, question: str) -> str:
+        """Generate a general response without RAG context."""
+        general_prompt = f"""Sen Türkçe konuşan bir yapay zeka asistanısın. 
+Kullanıcının sorusunu Türkçe olarak yanıtla.
+
+Soru: {question}
+
+Yanıt:"""
+        return self.generate(general_prompt)
+
+
 class LocalProvider(BaseLLMProvider):
     """Local context-aware response generator (no API required)."""
     
@@ -305,6 +377,7 @@ class LLMProviderFactory:
     PROVIDERS = {
         "deepseek": DeepSeekProvider,
         "openai": OpenAIProvider,
+        "huggingface": HuggingFaceProvider,
         "ollama": OllamaProvider,
         "local": LocalProvider
     }
@@ -320,7 +393,7 @@ class LLMProviderFactory:
         Create an LLM provider instance.
         
         Args:
-            provider_type: Type of provider ('deepseek', 'openai', 'ollama', 'local')
+            provider_type: Type of provider ('deepseek', 'openai', 'huggingface', 'ollama', 'local')
             api_key: API key for the provider (if required)
             **kwargs: Additional arguments for the provider
             
@@ -337,9 +410,12 @@ class LLMProviderFactory:
         
         provider_class = cls.PROVIDERS[provider_type]
         
-        if provider_type in ("deepseek", "openai"):
+        if provider_type in ("deepseek", "openai", "huggingface"):
             if not api_key:
                 raise ValueError(f"{provider_type} requires an API key")
+            if provider_type == "huggingface":
+                model = kwargs.get("model", "mistralai/Mistral-7B-Instruct-v0.3")
+                return provider_class(api_key, model=model)
             return provider_class(api_key)
         elif provider_type == "ollama":
             return provider_class(**kwargs)
@@ -350,3 +426,4 @@ class LLMProviderFactory:
     def get_available_providers(cls) -> list:
         """Get list of available provider types."""
         return list(cls.PROVIDERS.keys())
+
