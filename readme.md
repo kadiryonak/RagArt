@@ -146,6 +146,6 @@ MIT License - See [LICENSE](LICENSE)
 
 <div align="center">
 
-Made with ❤️ by [kadiryonak](https://github.com/kadiryonak)
+Made with by [kadiryonak](https://github.com/kadiryonak)
 
 </div>
