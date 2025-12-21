@@ -34,7 +34,7 @@ Upload your JSON knowledge base → Ask questions → Get intelligent answers
 ![Drop File Screen](görsel/2.png)
 
 ### Source Files Screen
-![Drop File Screen](görsel/2.png)
+![Drop File Screen](görsel/3.png)
 ---
 
 ## 🚀 Quick Start
