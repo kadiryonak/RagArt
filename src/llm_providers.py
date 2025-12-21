@@ -211,11 +211,11 @@ class OllamaProvider(BaseLLMProvider):
 
 
 class HuggingFaceProvider(BaseLLMProvider):
-    """HuggingFace Inference API provider."""
+    """HuggingFace Inference API provider using OpenAI-compatible endpoint."""
     
-    API_URL = "https://router.huggingface.co/hf-inference/models/"
+    API_URL = "https://router.huggingface.co/v1/chat/completions"
     
-    def __init__(self, api_key: str, model: str = "mistralai/Mistral-7B-Instruct-v0.3"):
+    def __init__(self, api_key: str, model: str = "meta-llama/Llama-3.1-8B-Instruct"):
         """
         Initialize the HuggingFace provider.
         
@@ -225,51 +225,45 @@ class HuggingFaceProvider(BaseLLMProvider):
         """
         self.api_key = api_key
         self.model = model
-        self.timeout = 60
         self.max_tokens = 500
     
     def generate(self, prompt: str) -> str:
-        """Generate a response using HuggingFace Inference API."""
+        """Generate a response using HuggingFace OpenAI-compatible API."""
         try:
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             }
             
-            # Format prompt for Mistral Instruct
-            formatted_prompt = f"<s>[INST] {prompt} [/INST]"
-            
             payload = {
-                "inputs": formatted_prompt,
-                "parameters": {
-                    "max_new_tokens": self.max_tokens,
-                    "temperature": 0.1,
-                    "return_full_text": False
-                }
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": self.max_tokens,
+                "temperature": 0.1
             }
             
             response = requests.post(
-                f"{self.API_URL}{self.model}",
+                self.API_URL,
                 headers=headers,
                 json=payload,
-                timeout=self.timeout
+                timeout=60
             )
             
             if response.status_code == 200:
                 result = response.json()
-                if isinstance(result, list) and len(result) > 0:
-                    return result[0].get("generated_text", "").strip()
-                return str(result)
-            elif response.status_code == 503:
-                # Model is loading
-                return "Model yükleniyor, lütfen birkaç saniye bekleyip tekrar deneyin."
+                if "choices" in result and len(result["choices"]) > 0:
+                    return result["choices"][0]["message"]["content"].strip()
+                return "No response generated."
+            elif response.status_code == 402:
+                return "HuggingFace kredi limiti doldu. PRO hesaba geçin veya local mode kullanın."
             else:
+                error_text = response.text[:200] if response.text else "Unknown error"
                 logger.error(f"{StatusEmoji.ERROR} HuggingFace API error: {response.status_code}")
-                return f"HuggingFace API error: {response.status_code} - {response.text}"
+                return f"HuggingFace API error: {response.status_code} - {error_text}"
                 
         except Exception as e:
-            logger.error(f"{StatusEmoji.ERROR} HuggingFace connection error: {e}")
-            return f"HuggingFace connection error: {e}"
+            logger.error(f"{StatusEmoji.ERROR} HuggingFace error: {e}")
+            return f"HuggingFace error: {e}"
     
     def generate_general(self, question: str) -> str:
         """Generate a general response without RAG context."""
@@ -414,7 +408,7 @@ class LLMProviderFactory:
             if not api_key:
                 raise ValueError(f"{provider_type} requires an API key")
             if provider_type == "huggingface":
-                model = kwargs.get("model", "mistralai/Mistral-7B-Instruct-v0.3")
+                model = kwargs.get("model", "meta-llama/Llama-3.1-8B-Instruct")
                 return provider_class(api_key, model=model)
             return provider_class(api_key)
         elif provider_type == "ollama":

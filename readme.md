@@ -28,8 +28,13 @@ Upload your JSON knowledge base → Ask questions → Get intelligent answers
 ## 🖼️ Screenshots
 
 ### Question & Answer Interface
-![Question Interface](görsel/Ekran%20görüntüsü%202025-09-16%20034623.png)
+![Question Interface](görsel/1.png)
 
+### Drop File Screen
+![Drop File Screen](görsel/2.png)
+
+### Source Files Screen
+![Drop File Screen](görsel/2.png)
 ---
 
 ## 🚀 Quick Start

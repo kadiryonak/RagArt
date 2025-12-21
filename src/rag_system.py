@@ -114,11 +114,17 @@ class TurkishRAGSystem:
         Initialize the RAG system by creating the vector store.
         
         This method:
-        1. Loads documents from the data folder
-        2. Splits them into chunks
-        3. Creates embeddings and stores in ChromaDB
+        1. Tries to load existing collection if available
+        2. If not available, loads documents and creates new collection
         """
         logger.info(f"{StatusEmoji.ROCKET} Initializing RAG system...")
+        
+        # Try to load existing collection first
+        if self.load_existing_vector_store():
+            logger.info(f"{StatusEmoji.SUCCESS} RAG system ready (loaded existing collection)!")
+            return
+        
+        # Create new collection from documents
         self.create_vector_store()
         logger.info(f"{StatusEmoji.SUCCESS} RAG system ready!")
     
@@ -145,6 +151,7 @@ class TurkishRAGSystem:
         # Clear existing collection
         try:
             self.chroma_client.delete_collection("turkish_rag_collection")
+            logger.info(f"{StatusEmoji.INFO} Deleted old collection")
         except Exception:
             pass
         
@@ -157,6 +164,42 @@ class TurkishRAGSystem:
         )
         
         logger.info(f"{StatusEmoji.SUCCESS} Vector store created successfully!")
+    
+    def load_existing_vector_store(self) -> bool:
+        """
+        Try to load an existing vector store if available.
+        
+        Returns:
+            True if existing collection was loaded, False otherwise
+        """
+        try:
+            # Check if collection exists
+            collections = self.chroma_client.list_collections()
+            collection_names = [c.name for c in collections]
+            
+            if "turkish_rag_collection" in collection_names:
+                # Load existing collection
+                self.vector_store = Chroma(
+                    client=self.chroma_client,
+                    collection_name="turkish_rag_collection",
+                    embedding_function=self.embedding_manager.embeddings
+                )
+                
+                # Verify it has documents
+                collection = self.chroma_client.get_collection("turkish_rag_collection")
+                doc_count = collection.count()
+                
+                if doc_count > 0:
+                    logger.info(f"{StatusEmoji.SUCCESS} Loaded existing collection with {doc_count} documents")
+                    return True
+                else:
+                    logger.info(f"{StatusEmoji.WARNING} Collection exists but is empty")
+                    return False
+            
+            return False
+        except Exception as e:
+            logger.warning(f"{StatusEmoji.WARNING} Could not load existing collection: {e}")
+            return False
     
     def search(self, query: str, k: int = 5) -> List[Document]:
         """
