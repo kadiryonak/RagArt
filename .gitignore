@@ -67,8 +67,6 @@ myenv/
 *.swo
 *~
 
-# Jupyter Notebook
-.ipynb_checkpoints
 
 # pyenv
 .python-version
@@ -110,5 +108,5 @@ tmp/
 .cache/
 models/
 
-görsel/
+
 
