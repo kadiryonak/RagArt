@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turkish RAG System</title>
+    <meta name="description" content="A Retrieval-Augmented Generation system for Turkish language question answering">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: #f1f3f5;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            background: transparent;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #6c757d;
+        }
+
+        .tab-btn:hover {
+            background: #e9ecef;
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 25px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Question Tab */
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+
+        .panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+        }
+
+        .panel h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .question-input {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            resize: vertical;
+        }
+
+        .question-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 12px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .answer-box {
+            background: #d4edda;
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid #28a745;
+        }
+
+        .answer-box h3 {
+            color: #155724;
+        }
+
+        .answer-content {
+            color: #155724;
+            line-height: 1.6;
+            min-height: 80px;
+            white-space: pre-wrap;
+        }
+
+        .sources-box {
+            background: #e7f3ff;
+            border-radius: 12px;
+            padding: 15px;
+            border-left: 4px solid #007bff;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .sources-box h4 {
+            color: #004085;
+            margin-bottom: 10px;
+        }
+
+        .source-item {
+            background: white;
+            padding: 10px;
+            margin: 6px 0;
+            border-radius: 6px;
+            border: 1px solid #b8daff;
+            font-size: 13px;
+        }
+
+        .source-title {
+            font-weight: 600;
+            color: #004085;
+        }
+
+        /* Upload Tab */
+        .upload-zone {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+
+        .upload-zone:hover,
+        .upload-zone.dragover {
+            border-color: #764ba2;
+            background: #f0f0ff;
+        }
+
+        .upload-zone h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .upload-zone p {
+            color: #6c757d;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .file-list {
+            margin-top: 20px;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 12px 15px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .action-bar {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: #f8f9fa;
+            padding: 12px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .status-info {
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-ready {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #667eea;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast-success {
+            background: #28a745;
+        }
+
+        .toast-error {
+            background: #dc3545;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .tabs {
+                flex-wrap: wrap;
+            }
+
+            .tab-btn {
+                flex: 1 1 50%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Turkish RAG System</h1>
+            <p>Upload your knowledge base, ask questions, get intelligent answers</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="question">❓ Ask Question</button>
+            <button class="tab-btn" data-tab="files">📁 Manage Files</button>
+        </div>
+
+        <!-- Question Tab -->
+        <div id="question-tab" class="tab-content active">
+            <div class="main-content">
+                <div class="panel">
+                    <h3>❓ Your Question</h3>
+                    <textarea id="questionInput" class="question-input"
+                        placeholder="e.g., Algoritma nedir? (What is an algorithm?)"></textarea>
+                    <button id="askButton" class="btn btn-primary">🔍 Ask Question</button>
+                </div>
+
+                <div>
+                    <div class="answer-box">
+                        <h3>💬 Answer</h3>
+                        <div id="answerContent" class="answer-content">
+                            Upload your JSON files in the "Manage Files" tab, then ask questions here...
+                        </div>
+                    </div>
+
+                    <div class="sources-box">
+                        <h4>📚 Source Documents</h4>
+                        <div id="sourcesContent">Sources will appear here...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Files Tab -->
+        <div id="files-tab" class="tab-content">
+            <div class="upload-zone" id="uploadZone">
+                <h3>📤 Drop JSON Files Here</h3>
+                <p>or click to select files</p>
+                <p style="margin-top: 10px; font-size: 12px; color: #999;">Supported: .json files up to 16MB</p>
+                <input type="file" id="fileInput" accept=".json" multiple>
+            </div>
+
+            <div class="file-list">
+                <h3 style="margin-bottom: 15px;">📂 Knowledge Base Files</h3>
+                <div id="fileList">Loading files...</div>
+            </div>
+
+            <div class="action-bar">
+                <button id="reindexBtn" class="btn btn-success">🔄 Reindex Knowledge Base</button>
+                <span style="color: #6c757d; font-size: 13px; margin-left: 10px;">
+                    Click after adding/removing files to update the system
+                </span>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-info">
+                📊 Status: <span id="systemStatus" class="status-badge status-loading">Loading...</span>
+            </div>
+            <div class="status-info">🤖 Model: <span id="modelType">-</span></div>
+            <div class="status-info">📁 Files: <span id="fileCount">-</span></div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById(btn.dataset.tab + '-tab').classList.add('active');
+                if (btn.dataset.tab === 'files') loadFiles();
+            });
+        });
+
+        // Toast notification
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // File Upload
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        async function handleFiles(files) {
+            for (const file of files) {
+                if (!file.name.endsWith('.json')) {
+                    showToast(`${file.name}: Only JSON files allowed`, 'error');
+                    continue;
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        showToast(`${file.name} uploaded successfully!`);
+                    } else {
+                        showToast(result.error || 'Upload failed', 'error');
+                    }
+                } catch (error) {
+                    showToast(`Error uploading ${file.name}`, 'error');
+                }
+            }
+            loadFiles();
+        }
+
+        // Load file list
+        async function loadFiles() {
+            try {
+                const response = await fetch('/list-files');
+                const data = await response.json();
+
+                const fileList = document.getElementById('fileList');
+                document.getElementById('fileCount').textContent = data.total;
+
+                if (data.files.length === 0) {
+                    fileList.innerHTML = '<p style="color: #6c757d;">No files uploaded yet. Drop some JSON files above!</p>';
+                    return;
+                }
+
+                fileList.innerHTML = data.files.map(file => `
+                    <div class="file-item">
+                        <div class="file-info">
+                            <div class="file-name">📄 ${file.filename}</div>
+                            <div class="file-meta">${file.document_count || 0} documents • ${file.size_kb || 0} KB</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteFile('${file.filename}')">🗑️ Delete</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                document.getElementById('fileList').innerHTML = '<p style="color: #dc3545;">Error loading files</p>';
+            }
+        }
+
+        // Delete file
+        async function deleteFile(filename) {
+            if (!confirm(`Delete ${filename}?`)) return;
+
+            try {
+                const response = await fetch('/delete-file', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('File deleted');
+                    loadFiles();
+                } else {
+                    showToast(result.error, 'error');
+                }
+            } catch (error) {
+                showToast('Delete failed', 'error');
+            }
+        }
+
+        // Reindex
+        document.getElementById('reindexBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('reindexBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading">Reindexing</span>';
+
+            try {
+                const response = await fetch('/reindex', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`Reindexed ${result.document_count} documents!`);
+                } else {
+                    showToast(result.error, 'error');
+                }
+            } catch (error) {
+                showToast('Reindex failed', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔄 Reindex Knowledge Base';
+            }
+        });
+
+        // Question asking
+        const questionInput = document.getElementById('questionInput');
+        const askButton = document.getElementById('askButton');
+        const answerContent = document.getElementById('answerContent');
+        const sourcesContent = document.getElementById('sourcesContent');
+
+        askButton.addEventListener('click', askQuestion);
+        questionInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) askQuestion();
+        });
+
+        async function askQuestion() {
+            const question = questionInput.value.trim();
+            if (!question) return alert('Please enter a question!');
+
+            askButton.disabled = true;
+            askButton.innerHTML = '<span class="loading">Searching</span>';
+            answerContent.innerHTML = '<div class="loading">Searching for answer...</div>';
+
+            try {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    answerContent.innerHTML = result.answer.replace(/\n/g, '<br>');
+
+                    if (result.sources && result.sources.length > 0) {
+                        sourcesContent.innerHTML = result.sources.map((s, i) => `
+                            <div class="source-item">
+                                <div class="source-title">${i + 1}. ${s.title}</div>
+                                <div>${s.content.substring(0, 150)}...</div>
+                            </div>
+                        `).join('');
+                    } else {
+                        sourcesContent.innerHTML = 'No source documents found.';
+                    }
+                } else {
+                    answerContent.innerHTML = `<span style="color: #dc3545;">❌ ${result.error}</span>`;
+                }
+            } catch (error) {
+                answerContent.innerHTML = `<span style="color: #dc3545;">❌ ${error.message}</span>`;
+            } finally {
+                askButton.disabled = false;
+                askButton.innerHTML = '🔍 Ask Question';
+            }
+        }
+
+        // System status
+        async function checkStatus() {
+            try {
+                const response = await fetch('/status');
+                const status = await response.json();
+                const statusEl = document.getElementById('systemStatus');
+
+                if (status.ready) {
+                    statusEl.textContent = 'Ready';
+                    statusEl.className = 'status-badge status-ready';
+                    document.getElementById('modelType').textContent = status.model_type;
+                } else {
+                    statusEl.textContent = status.status || 'Loading...';
+                    statusEl.className = 'status-badge status-loading';
+                    setTimeout(checkStatus, 2000);
+                }
+            } catch (error) {
+                document.getElementById('systemStatus').textContent = 'Error';
+                document.getElementById('systemStatus').className = 'status-badge status-error';
+                setTimeout(checkStatus, 5000);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkStatus();
+            loadFiles();
+        });
+    </script>
+</body>
+
+</html>
