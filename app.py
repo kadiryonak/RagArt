@@ -167,6 +167,8 @@ def ask_question():
             llm_provider=llm_override,
             llm_params=req_settings.llm_params.to_dict(),
             retrieval_strategy=req_settings.retrieval_strategy,
+            rerank=req_settings.rerank,
+            rerank_fetch_k=req_settings.rerank_fetch_k,
         )
         
         # Check for errors

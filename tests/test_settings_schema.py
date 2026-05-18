@@ -199,3 +199,38 @@ class TestRetrievalParsing:
     def test_no_header_means_none(self):
         s = parse_request_settings(_MockHeaders())
         assert s.retrieval_strategy is None
+
+
+class TestRerankParsing:
+    @pytest.mark.parametrize("val", ["1", "true", "True", "yes", "ON"])
+    def test_truthy_values(self, val):
+        s = parse_request_settings(_MockHeaders(**{"X-Rerank": val}))
+        assert s.rerank is True
+
+    @pytest.mark.parametrize("val", ["0", "false", "no", "off", "anything"])
+    def test_falsy_values(self, val):
+        s = parse_request_settings(_MockHeaders(**{"X-Rerank": val}))
+        assert s.rerank is False
+
+    def test_default_off(self):
+        s = parse_request_settings(_MockHeaders())
+        assert s.rerank is False
+        assert s.rerank_fetch_k == 20
+
+    def test_fetch_k_parsed(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Rerank": "true", "X-Rerank-Fetch-K": "40"
+        }))
+        assert s.rerank_fetch_k == 40
+
+    def test_fetch_k_clamped(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Rerank-Fetch-K": "10000",
+        }))
+        assert s.rerank_fetch_k == 200  # capped
+
+    def test_fetch_k_invalid_falls_back(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Rerank-Fetch-K": "not-a-number",
+        }))
+        assert s.rerank_fetch_k == 20  # default

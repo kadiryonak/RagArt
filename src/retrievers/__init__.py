@@ -13,6 +13,7 @@ from src.retrievers.base import BaseRetriever, RetrievedDoc
 from src.retrievers.dense import DenseRetriever
 from src.retrievers.sparse import BM25Retriever
 from src.retrievers.hybrid import HybridRetriever
+from src.retrievers.reranker import RerankedRetriever
 
 __all__ = [
     "BaseRetriever",
@@ -20,4 +21,5 @@ __all__ = [
     "DenseRetriever",
     "BM25Retriever",
     "HybridRetriever",
+    "RerankedRetriever",
 ]

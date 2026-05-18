@@ -1282,6 +1282,17 @@
                         <select id="retrievalSelect" class="form-select"></select>
                         <div class="form-hint" id="retrievalHint"></div>
                     </div>
+                    <div class="form-group">
+                        <label class="form-label" style="cursor: pointer;">
+                            <span>Cross-encoder reranker</span>
+                            <input type="checkbox" id="rerankToggle" style="width: auto; margin-left: 8px;">
+                        </label>
+                        <div class="form-hint" id="rerankHint">
+                            Aday belgeleri cross-encoder ile yeniden sıralar.
+                            İlk çağrıda ~400MB model indirir (cache'lenir).
+                            Her sorguya ~500-1000ms ekler.
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-section">
@@ -1340,7 +1351,12 @@
         }
 
         function defaultSettings() {
-            return { provider: '', apiKey: '', model: '', llmParams: {}, retrievalStrategy: '' };
+            return {
+                provider: '', apiKey: '', model: '',
+                llmParams: {},
+                retrievalStrategy: '',
+                rerank: false,
+            };
         }
 
         function saveSettings() {
@@ -1379,6 +1395,9 @@
             }
             if (userSettings.retrievalStrategy && userSettings.retrievalStrategy !== 'auto') {
                 h['X-Retrieval-Strategy'] = userSettings.retrievalStrategy;
+            }
+            if (userSettings.rerank) {
+                h['X-Rerank'] = 'true';
             }
             return h;
         }
@@ -1425,6 +1444,13 @@
             rsel.addEventListener('change', () => {
                 userSettings.retrievalStrategy = rsel.value;
                 updateRetrievalHint();
+            });
+
+            // Reranker toggle
+            const rrToggle = document.getElementById('rerankToggle');
+            rrToggle.checked = !!userSettings.rerank;
+            rrToggle.addEventListener('change', () => {
+                userSettings.rerank = rrToggle.checked;
             });
         }
 

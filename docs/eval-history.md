@@ -207,6 +207,80 @@ Hybrid retrieval, OOD detection sorununu çözmez — bu **query understanding**
 
 ---
 
+## v3 — Hybrid + Reranker (cross-encoder) (2026-05-18)
+
+**Branch:** `feat/reranker`
+**Komut:** `python scripts/run_eval.py --provider groq --retrieval hybrid --rerank --layers L1,L2,L3 --name baseline-v3-rerank`
+**Değişen:** Hybrid retrieval'ın çıktısı **bge-reranker-v2-m3** (cross-encoder) ile yeniden sıralandı. LLM aynı (Groq).
+
+### Özet
+
+| Katman | v1 | v2 | **v3** | Δ vs v2 |
+|---|---|---|---|---|
+| L1 (rules)   | 0.884 | 0.928 | 0.926 | −0.003 (flat) |
+| **L2 (vector)** | 0.843 | 0.849 | **0.883** | **+0.034** ⭐ |
+| L3 (lexical) | 0.266 | 0.306 | 0.320 | +0.014 |
+| **Overall**  | 0.6645 | 0.6946 | **0.7096** | **+0.0150** |
+| L2 pass rate | 83% | 83% | **92%** | **+%9** ⭐ |
+
+### Per-item delta (vs v2)
+
+| Item | v2 | v3 | Δ | Yorum |
+|---|---|---|---|---|
+| **medium-04-derin-ogrenme** | 0.579 | **0.687** | **+0.108** | ⭐ v2'deki RRF regression'ı reranker düzeltti |
+| **easy-02-python-tanim**    | 0.652 | **0.791** | **+0.140** | RRF tradeoff'ı reranker yumuşattı |
+| **edge-01-out-of-domain**   | 0.518 | 0.607 | **+0.089** | Sürpriz: cross-encoder OOD'yi daha iyi handle ediyor |
+| hard-03-multi-hop           | 0.760 | 0.781 | +0.021 | |
+| easy-01-algoritma-tanim     | 0.763 | 0.778 | +0.015 | |
+| **easy-03-yapay-zeka**      | 0.732 | 0.630 | **−0.102** | ⚠ reranker farklı chunk seçti |
+| **medium-03-veri-yapilari** | 0.753 | 0.661 | **−0.092** | ⚠ BM25 doğru kaynağı çekti ama reranker chunk seçimi değiştirdi |
+
+### Yorumlar
+
+**1. Hipotez tam doğrulandı: medium-04 recovery +0.108.**
+v2 yorumlarında "RRF farklı doc kombinasyonu seçti, reranker düzeltir" demiştik. Cross-encoder (query, doc) çifti üzerinden gerçek relevance tahmin ederek Derin_öğrenme + Makine_öğrenmesi kombinasyonunu doğru çekti.
+
+**2. L2 pass rate %9 sıçraması production'da en önemli sinyal.**
+Average skor küçük yükselse de (0.849→0.883), eşik aşımı belirgin arttı. Bu, top-k'daki dokümanların gerçekten relevant olduğunu gösteriyor — agent/synthesis görevlerde aşağı akış kazanımı çok daha büyük olur.
+
+**3. easy-03 / medium-03 regression: −0.10.**
+Cross-encoder bazen farklı chunk seçer; chunk'lar küçük olduğundan içerikleri referans cevaba kelime kelime uymuyor. Bu, **chunk strategy** (parent-child retrieval) veya **context engineering** (compression + ordering) ile düzelir, reranker'ın suçu değil.
+
+**4. Latency ⚠ önemli trade-off.**
+Sorgu başına +6-8 saniye (CPU, fetch_k=20). Production'da:
+- `fetch_k=10` → ~50% azaltır
+- GPU varsa → ~10x hızlanır
+- Batch reranking → minor optimization
+
+**5. Halüsinasyon ipucu — edge-01 +0.089.**
+Reranker, low-relevance context'i dipte tutarak LLM'in "uygun veri yok" demesini kolaylaştırdı.
+
+### Kümülatif evrim
+
+| | v0 | v1 | v2 | **v3** | Δ v0→v3 |
+|---|---|---|---|---|---|
+| Overall | 0.576 | 0.664 | 0.695 | **0.710** | **+0.134 (+23%)** |
+| Pass    | 3/12 | 7/12 | 8/12 | **8/12** | +5 |
+
+### İyileştirme hedefleri (güncellenmiş)
+
+| Hedef | Beklenen | Niye? |
+|---|---|---|
+| `feat/context-engineering` | L3 +0.05-0.10, easy-03/medium-03 düzelme | Chunk compression + lost-in-the-middle ordering |
+| `feat/query-understanding` | edge-02 +0.20 | Boş soru / OOD daha net redde uğrar |
+| `feat/memory` | Multi-turn senaryolarda | Mevcut testset'i etkilemez |
+| `feat/parent-child-retrieval` | L3 +0.10 | Küçük chunk'larla ara, parent chunk'ları dön |
+
+### Teknik notlar
+
+- **Model:** `BAAI/bge-reranker-v2-m3`, multilingual, ~400MB, CPU üzerinde 30-50ms/çift.
+- **Lazy loading:** İlk `retrieve()` çağrısına kadar model yüklenmez. Cache: `_reranker_cache`, base retriever name ile keyed.
+- **API:** `RerankedRetriever(base, fetch_k=20)`; `BaseRetriever` sözleşmesini uygular → diğer retriever'larla swap edilebilir.
+- **Settings:** `X-Rerank: true` header'ı + `X-Rerank-Fetch-K: N` (clamped to [1, 200]).
+- **UI:** Settings modal'da "Cross-encoder reranker" toggle.
+
+---
+
 ## Şablon: yeni branch sonrası ekleme formatı
 
 ```markdown

@@ -75,6 +75,18 @@ def parse_args() -> argparse.Namespace:
         choices=["dense", "sparse", "hybrid"],
         help="Retrieval strategy override (default: auto = hybrid if available).",
     )
+    p.add_argument(
+        "--rerank",
+        action="store_true",
+        help="Apply cross-encoder reranker on top of retrieval. "
+             "First call downloads ~400MB (bge-reranker-v2-m3).",
+    )
+    p.add_argument(
+        "--rerank-fetch-k",
+        type=int, default=20,
+        help="Candidates fed to reranker (default 20). "
+             "Higher = better recall, slower (~50ms per candidate).",
+    )
     return p.parse_args()
 
 
@@ -85,6 +97,8 @@ def build_rag_callable(
     api_key_override: str | None = None,
     model_override: str | None = None,
     retrieval_strategy: str | None = None,
+    rerank: bool = False,
+    rerank_fetch_k: int = 20,
 ):
     """Gerçek RAG sistemini veya mock'u döndür.
 
@@ -128,12 +142,16 @@ def build_rag_callable(
 
     if retrieval_strategy:
         print(f"[info] Retrieval strategy: {retrieval_strategy}")
+    if rerank:
+        print(f"[info] Reranker enabled (fetch_k={rerank_fetch_k})")
 
     def real(question: str) -> RAGOutput:
         result = rag.ask(
             question,
             llm_provider=llm_override,
             retrieval_strategy=retrieval_strategy,
+            rerank=rerank,
+            rerank_fetch_k=rerank_fetch_k,
         )
         return RAGOutput(
             answer=result.get("answer", ""),
@@ -191,6 +209,8 @@ def main() -> int:
             api_key_override=args.api_key,
             model_override=args.model,
             retrieval_strategy=args.retrieval,
+            rerank=args.rerank,
+            rerank_fetch_k=args.rerank_fetch_k,
         )
 
     evaluators = build_evaluators(layer_set, rag_obj=rag_obj, with_judge=args.with_judge)

@@ -21,12 +21,14 @@ def client(monkeypatch):
     captured: dict = {}
 
     def stub_ask(question, *, k=5, llm_provider=None, llm_params=None,
-                 retrieval_strategy=None):
+                 retrieval_strategy=None, rerank=False, rerank_fetch_k=20):
         captured["question"] = question
         captured["k"] = k
         captured["llm_provider"] = llm_provider
         captured["llm_params"] = llm_params
         captured["retrieval_strategy"] = retrieval_strategy
+        captured["rerank"] = rerank
+        captured["rerank_fetch_k"] = rerank_fetch_k
         return {
             "question": question,
             "answer": "stub cevap",
@@ -187,6 +189,44 @@ class TestAskWithBYOK:
         )
         assert r.status_code == 200
         assert captured["retrieval_strategy"] is None
+
+    def test_rerank_header_enables_reranker(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Rerank": "true"},
+        )
+        assert r.status_code == 200
+        assert captured["rerank"] is True
+
+    def test_rerank_header_false_keeps_off(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Rerank": "0"},
+        )
+        assert r.status_code == 200
+        assert captured["rerank"] is False
+
+    def test_rerank_fetch_k_threaded(self, client):
+        c, captured, _ = client
+        c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Rerank": "true", "X-Rerank-Fetch-K": "50"},
+        )
+        assert captured["rerank_fetch_k"] == 50
+
+    def test_rerank_fetch_k_clamped(self, client):
+        c, captured, _ = client
+        c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Rerank": "true", "X-Rerank-Fetch-K": "9999"},
+        )
+        assert captured["rerank_fetch_k"] == 200  # max clamp
 
     def test_ollama_no_key_ok(self, client):
         c, captured, _ = client

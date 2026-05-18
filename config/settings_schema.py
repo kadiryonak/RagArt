@@ -141,6 +141,8 @@ class RequestSettings:
     model: Optional[str] = None
     llm_params: LLMParams = field(default_factory=LLMParams)
     retrieval_strategy: Optional[str] = None  # 'dense' | 'sparse' | 'hybrid' | None
+    rerank: bool = False                       # cross-encoder rerank toggle
+    rerank_fetch_k: int = 20                   # aday sayısı
 
 
 def parse_request_settings(headers) -> RequestSettings:
@@ -160,12 +162,25 @@ def parse_request_settings(headers) -> RequestSettings:
     if strategy and strategy not in ("dense", "sparse", "hybrid"):
         strategy = None  # bilinmeyen değer → sessizce default
 
+    rerank_raw = (headers.get("X-Rerank") or "").strip().lower()
+    rerank = rerank_raw in ("1", "true", "yes", "on")
+
+    rerank_fetch_k = 20
+    try:
+        rfk = headers.get("X-Rerank-Fetch-K")
+        if rfk:
+            rerank_fetch_k = max(1, min(200, int(rfk)))
+    except (ValueError, TypeError):
+        pass
+
     return RequestSettings(
         provider=provider,
         api_key=(headers.get("X-API-Key") or "").strip() or None,
         model=(headers.get("X-Model") or "").strip() or None,
         llm_params=LLMParams.from_json_string(headers.get("X-LLM-Params")),
         retrieval_strategy=strategy,
+        rerank=rerank,
+        rerank_fetch_k=rerank_fetch_k,
     )
 
 
@@ -191,6 +206,13 @@ def get_settings_schema() -> Dict[str, Any]:
             {"id": "hybrid", "label": "Hybrid (RRF)",
              "desc": "Dense + BM25 birleşimi. Production standardı."},
         ],
+        "rerank": {
+            "available": True,
+            "desc": "Cross-encoder ile son aşama yeniden sıralama. "
+                    "İlk çağrıda ~400MB model indirir, sonra cache'lenir. "
+                    "Her sorguya ~500-1000ms ekler ama relevance ciddi artar.",
+            "default_fetch_k": 20,
+        },
         "param_descriptions_tr": {
             "temperature": "Yaratıcılık. Düşük → tutarlı/kuralcı, yüksek → çeşitli/yaratıcı.",
             "top_p": "Nucleus sampling. 1.0 = tüm seçenekler, 0.5 = en olası %50.",

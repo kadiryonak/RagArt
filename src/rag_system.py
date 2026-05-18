@@ -23,6 +23,7 @@ from src.retrievers import (
     BM25Retriever,
     DenseRetriever,
     HybridRetriever,
+    RerankedRetriever,
     RetrievedDoc,
 )
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
@@ -109,10 +110,13 @@ class TurkishRAGSystem:
         self.document_loader = JSONDocumentLoader(data_folder)
 
         # Retrievers — built when vector store is ready (dense always,
-        # sparse from the same docs, hybrid as RRF of the two)
+        # sparse from the same docs, hybrid as RRF of the two).
+        # Reranker is lazy: only constructed when first requested (model
+        # download ~400MB on first use).
         self._dense_retriever: Optional[BaseRetriever] = None
         self._sparse_retriever: Optional[BaseRetriever] = None
         self._hybrid_retriever: Optional[BaseRetriever] = None
+        self._reranker_cache: Dict[str, RerankedRetriever] = {}
         
         # System prompt template
         self.system_prompt = TURKISH_SYSTEM_PROMPT
@@ -253,16 +257,38 @@ class TurkishRAGSystem:
             f"hybrid={self._hybrid_retriever is not None}"
         )
 
-    def _select_retriever(self, strategy: Optional[str]) -> Optional[BaseRetriever]:
-        """Strateji adından retriever'ı çöz. Default: hybrid (varsa), yoksa dense."""
+    def _select_retriever(
+        self,
+        strategy: Optional[str],
+        *,
+        rerank: bool = False,
+        rerank_fetch_k: int = 20,
+    ) -> Optional[BaseRetriever]:
+        """Strateji adından retriever'ı çöz; rerank=True ise üstüne reranker sar.
+
+        Default strategy: hybrid (varsa), yoksa dense.
+        Reranker isteğe bağlı — lazy load.
+        """
         if strategy == "dense":
-            return self._dense_retriever
-        if strategy == "sparse":
-            return self._sparse_retriever
-        if strategy == "hybrid":
-            return self._hybrid_retriever
-        # auto / None — production default: hybrid if available
-        return self._hybrid_retriever or self._dense_retriever
+            base = self._dense_retriever
+        elif strategy == "sparse":
+            base = self._sparse_retriever
+        elif strategy == "hybrid":
+            base = self._hybrid_retriever
+        else:
+            # auto / None — production default
+            base = self._hybrid_retriever or self._dense_retriever
+
+        if not rerank or base is None:
+            return base
+
+        # Cache by base retriever name so we don't reload the cross-encoder
+        cache_key = base.name
+        if cache_key not in self._reranker_cache:
+            self._reranker_cache[cache_key] = RerankedRetriever(
+                base, fetch_k=rerank_fetch_k
+            )
+        return self._reranker_cache[cache_key]
 
     def search(
         self,
@@ -270,6 +296,8 @@ class TurkishRAGSystem:
         k: int = 5,
         *,
         strategy: Optional[str] = None,
+        rerank: bool = False,
+        rerank_fetch_k: int = 20,
     ) -> List[Document]:
         """
         Search for relevant documents using the chosen retrieval strategy.
@@ -278,11 +306,15 @@ class TurkishRAGSystem:
             query: Search query
             k: Number of documents to return
             strategy: 'dense' | 'sparse' | 'hybrid' | None (auto)
+            rerank: Apply cross-encoder rerank on top of the strategy
+            rerank_fetch_k: How many candidates to feed the reranker
 
         Returns:
             List of relevant Document objects
         """
-        retriever = self._select_retriever(strategy)
+        retriever = self._select_retriever(
+            strategy, rerank=rerank, rerank_fetch_k=rerank_fetch_k,
+        )
         if retriever is None:
             # Legacy fallback path
             if not self.vector_store:
@@ -325,6 +357,8 @@ class TurkishRAGSystem:
         llm_provider: Optional[BaseLLMProvider] = None,
         llm_params: Optional[Dict[str, Any]] = None,
         retrieval_strategy: Optional[str] = None,
+        rerank: bool = False,
+        rerank_fetch_k: int = 20,
     ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
@@ -353,11 +387,14 @@ class TurkishRAGSystem:
         
         try:
             # Search for relevant documents
-            strategy_label = retrieval_strategy or "auto"
+            strategy_label = (retrieval_strategy or "auto") + ("+rerank" if rerank else "")
             logger.info(
                 f"{StatusEmoji.SEARCH} Searching ({strategy_label}) for: '{question}'..."
             )
-            relevant_docs = self.search(question, k=k, strategy=retrieval_strategy)
+            relevant_docs = self.search(
+                question, k=k, strategy=retrieval_strategy,
+                rerank=rerank, rerank_fetch_k=rerank_fetch_k,
+            )
             
             # Calculate relevance score
             relevance_score = self.calculate_relevance_score(question, relevant_docs)
