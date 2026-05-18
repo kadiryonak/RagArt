@@ -476,10 +476,20 @@
             border-radius: var(--radius-sm);
             border: 1px solid var(--border);
             font-size: 13px;
+            transition: border-color 0.15s ease, background 0.15s ease;
         }
 
         .source-item:first-of-type {
             margin-top: 10px;
+        }
+
+        .source-item.clickable {
+            cursor: pointer;
+        }
+
+        .source-item.clickable:hover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
         }
 
         .source-title {
@@ -487,6 +497,21 @@
             color: var(--accent);
             margin-bottom: 4px;
             font-size: 12.5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .source-link-hint {
+            font-size: 10.5px;
+            font-weight: 500;
+            opacity: 0.7;
+            white-space: nowrap;
+        }
+
+        .source-item.clickable:hover .source-link-hint {
+            opacity: 1;
         }
 
         .source-content {
@@ -1297,6 +1322,42 @@
                 </div>
 
                 <div class="form-section">
+                    <div class="form-section-title">Context Engineering</div>
+                    <div class="form-group">
+                        <label class="form-label" style="cursor: pointer;">
+                            <span>Tekrar/duplikat filtre (dedup)</span>
+                            <input type="checkbox" id="ctxDedupToggle" style="width: auto; margin-left: 8px;">
+                        </label>
+                        <div class="form-hint">
+                            Çok benzer chunk'ları temizler (cosine > 0.92).
+                            Dense-only retrieval'da faydalı; hybrid+rerank
+                            kullanıyorsanız kapalı bırakın.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="cursor: pointer;">
+                            <span>Lost-in-the-middle yeniden sıralama</span>
+                            <input type="checkbox" id="ctxReorderToggle" style="width: auto; margin-left: 8px;">
+                        </label>
+                        <div class="form-hint">
+                            En alakalı chunk'ları context'in başına ve sonuna
+                            koyar. 10+ chunk veya uzun döküman varsa açın.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="ctxMaxTokensInput">
+                            <span>Max context token (opsiyonel)</span>
+                            <span class="form-hint" style="margin: 0; font-size: 11px;">
+                                64–32000, boş = sınırsız
+                            </span>
+                        </label>
+                        <input type="number" id="ctxMaxTokensInput" class="form-input"
+                               min="64" max="32000" step="64"
+                               placeholder="örn. 4000">
+                    </div>
+                </div>
+
+                <div class="form-section">
                     <div class="form-section-title">Sohbet Hafızası</div>
                     <div class="form-group">
                         <label class="form-label" for="memorySelect">Strateji</label>
@@ -1385,6 +1446,9 @@
                 retrievalStrategy: '',
                 rerank: false,
                 memoryStrategy: 'none',
+                contextDedup: false,
+                contextReorder: false,
+                contextMaxTokens: null,
             };
         }
 
@@ -1508,6 +1572,15 @@
             if (userSettings.rerank) {
                 h['X-Rerank'] = 'true';
             }
+            if (userSettings.contextDedup) {
+                h['X-Context-Deduplicate'] = 'true';
+            }
+            if (userSettings.contextReorder) {
+                h['X-Context-Reorder'] = 'true';
+            }
+            if (userSettings.contextMaxTokens) {
+                h['X-Context-Max-Tokens'] = String(userSettings.contextMaxTokens);
+            }
             if (userSettings.memoryStrategy && userSettings.memoryStrategy !== 'none') {
                 h['X-Memory-Strategy'] = userSettings.memoryStrategy;
                 if (conversationHistory.length > 0) {
@@ -1572,6 +1645,24 @@
             rrToggle.checked = !!userSettings.rerank;
             rrToggle.addEventListener('change', () => {
                 userSettings.rerank = rrToggle.checked;
+            });
+
+            // Context engineering controls
+            const dedupEl = document.getElementById('ctxDedupToggle');
+            dedupEl.checked = !!userSettings.contextDedup;
+            dedupEl.addEventListener('change', () => {
+                userSettings.contextDedup = dedupEl.checked;
+            });
+            const reorderEl = document.getElementById('ctxReorderToggle');
+            reorderEl.checked = !!userSettings.contextReorder;
+            reorderEl.addEventListener('change', () => {
+                userSettings.contextReorder = reorderEl.checked;
+            });
+            const maxTokEl = document.getElementById('ctxMaxTokensInput');
+            maxTokEl.value = userSettings.contextMaxTokens || '';
+            maxTokEl.addEventListener('change', () => {
+                const v = parseInt(maxTokEl.value, 10);
+                userSettings.contextMaxTokens = (!isNaN(v) && v >= 64) ? v : null;
             });
 
             // Memory strategy
@@ -1737,6 +1828,58 @@
                 toast.style.transition = 'all 0.25s ease';
                 setTimeout(() => toast.remove(), 250);
             }, 3000);
+        }
+
+        // ---------- Source link helper ----------
+        // Builds /source/<file> URL with a #page=N fragment for PDFs so the
+        // browser's built-in viewer jumps straight to the matching page.
+        // For other formats the browser shows the raw file (PDF/JSON/MD/TXT
+        // render inline; DOCX downloads). When the data folder does not
+        // contain the file (shouldn't happen but defensive), we skip the
+        // link rather than 404 in a new tab.
+        function buildSourceUrl(source) {
+            const meta = source.metadata || {};
+            const filename = meta.source || source.title;
+            if (!filename) return null;
+            const fmt = (meta.format || '').toLowerCase();
+            // Encode each path segment so Turkish chars in filenames work
+            let url = '/source/' + encodeURIComponent(filename);
+            if (fmt === 'pdf' && typeof meta.page === 'number') {
+                // Native browser PDF viewers honour the #page= fragment
+                url += '#page=' + meta.page;
+            }
+            return url;
+        }
+
+        function renderSourceItem(source, index) {
+            const url = buildSourceUrl(source);
+            const meta = source.metadata || {};
+            const titleText = escapeHtml(source.title || meta.source || 'unknown');
+            const previewText =
+                escapeHtml((source.content || '').substring(0, 220)) +
+                (source.content && source.content.length > 220 ? '…' : '');
+
+            let linkHint = '';
+            if (url) {
+                if ((meta.format || '').toLowerCase() === 'pdf' &&
+                    typeof meta.page === 'number') {
+                    linkHint = `sayfa ${meta.page} →`;
+                } else {
+                    linkHint = 'kaynağı aç →';
+                }
+            }
+
+            const clickableClass = url ? ' clickable' : '';
+            const dataUrl = url ? ` data-url="${escapeHtml(url)}"` : '';
+            return `
+                <div class="source-item${clickableClass}"${dataUrl}>
+                    <div class="source-title">
+                        <span>${index + 1}. ${titleText}</span>
+                        ${linkHint ? `<span class="source-link-hint">${linkHint}</span>` : ''}
+                    </div>
+                    <div class="source-content">${previewText}</div>
+                </div>
+            `;
         }
 
         // ---------- Escape helper ----------
@@ -1940,12 +2083,16 @@
 
                     if (result.sources && result.sources.length > 0) {
                         sourcesContent.className = '';
-                        sourcesContent.innerHTML = result.sources.map((s, i) => `
-                            <div class="source-item">
-                                <div class="source-title">${i + 1}. ${escapeHtml(s.title)}</div>
-                                <div class="source-content">${escapeHtml((s.content || '').substring(0, 220))}${s.content && s.content.length > 220 ? '…' : ''}</div>
-                            </div>
-                        `).join('');
+                        sourcesContent.innerHTML = result.sources.map((s, i) =>
+                            renderSourceItem(s, i)
+                        ).join('');
+                        // Wire up clicks on clickable items
+                        sourcesContent.querySelectorAll('.source-item.clickable').forEach(el => {
+                            el.addEventListener('click', () => {
+                                const url = el.dataset.url;
+                                if (url) window.open(url, '_blank', 'noopener');
+                            });
+                        });
                     } else {
                         sourcesContent.className = 'empty-state';
                         sourcesContent.innerHTML = 'Kaynak bulunamadı.';
