@@ -141,9 +141,14 @@ class GroqProvider(BaseLLMProvider):
     """Groq API provider — OpenAI-compatible, ücretsiz katman ile.
 
     Default model llama-3.3-70b-versatile: çok hızlı, Türkçe yetkin.
+    Rate limit (TPM) yendiğinde 429 üretir; biz error mesajındaki
+    "try again in Xs" ipucunu okuyup tek seferlik retry yapıyoruz.
     """
 
     API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+    # 429 retry için maksimum bekleme (free tier TPM reset penceresi 60s)
+    MAX_RETRY_WAIT_S = 75.0
 
     def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile"):
         self.api_key = api_key
@@ -154,6 +159,18 @@ class GroqProvider(BaseLLMProvider):
             "top_p": 0.9,
         }
         self.timeout = 30
+
+    @staticmethod
+    def _parse_retry_wait(error_text: str) -> Optional[float]:
+        """Groq 429 mesajından "try again in 8.123s" gibi ipucu çıkar."""
+        import re
+        m = re.search(r"try again in ([\d.]+)s", error_text or "")
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                return None
+        return None
 
     def generate(self, prompt: str, **params: Any) -> str:
         cfg = _merge(self.defaults, params)
@@ -168,15 +185,28 @@ class GroqProvider(BaseLLMProvider):
             "max_tokens": cfg["max_tokens"],
             "top_p": cfg["top_p"],
         }
-        try:
-            r = requests.post(self.API_URL, headers=headers, json=payload, timeout=self.timeout)
-            if r.status_code != 200:
+        attempt = 0
+        while attempt < 2:
+            try:
+                r = requests.post(self.API_URL, headers=headers, json=payload, timeout=self.timeout)
+                if r.status_code == 200:
+                    return r.json()["choices"][0]["message"]["content"]
+                if r.status_code == 429 and attempt == 0:
+                    wait = self._parse_retry_wait(r.text) or 30.0
+                    wait = min(wait + 0.5, self.MAX_RETRY_WAIT_S)
+                    logger.warning(
+                        f"{StatusEmoji.WARNING} Groq 429 rate limit — sleeping {wait:.1f}s"
+                    )
+                    import time
+                    time.sleep(wait)
+                    attempt += 1
+                    continue
                 logger.error(f"{StatusEmoji.ERROR} Groq API {r.status_code}: {r.text[:200]}")
                 return f"Groq API error: {r.status_code}"
-            return r.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            logger.error(f"{StatusEmoji.ERROR} Groq error: {e}")
-            return f"Groq connection error: {e}"
+            except Exception as e:
+                logger.error(f"{StatusEmoji.ERROR} Groq error: {e}")
+                return f"Groq connection error: {e}"
+        return "Groq API error: rate limit (after retry)"
 
     def generate_general(self, question: str, **params: Any) -> str:
         general_prompt = (

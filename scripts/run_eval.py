@@ -53,11 +53,38 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip real RAG, use a trivial mock (sanity check the harness).",
     )
+    p.add_argument(
+        "--provider",
+        default=None,
+        help="LLM provider override (deepseek/openai/groq/ollama/huggingface/local). "
+             "Uses server default when omitted.",
+    )
+    p.add_argument(
+        "--api-key",
+        default=None,
+        help="API key for the chosen provider. Falls back to <PROVIDER>_API_KEY env.",
+    )
+    p.add_argument(
+        "--model",
+        default=None,
+        help="Model name override (e.g. llama-3.3-70b-versatile for groq).",
+    )
     return p.parse_args()
 
 
-def build_rag_callable(use_mock: bool):
-    """Gerçek RAG sistemini veya mock'u döndür."""
+def build_rag_callable(
+    use_mock: bool,
+    *,
+    provider_override: str | None = None,
+    api_key_override: str | None = None,
+    model_override: str | None = None,
+):
+    """Gerçek RAG sistemini veya mock'u döndür.
+
+    provider_override verildiğinde, server-side default RAG hâlâ embedder+
+    retrieval için kullanılır, ama her ask() çağrısında LLM bu override ile
+    swap edilir. Bu, UI'daki BYOK akışının CLI eşdeğeridir.
+    """
     if use_mock:
         def mock(question: str) -> RAGOutput:
             return RAGOutput(
@@ -66,10 +93,10 @@ def build_rag_callable(use_mock: bool):
                 retrieved_context="Mock bağlam metni.",
                 model="mock",
             )
-        return mock
+        return mock, None
 
-    # Gerçek RAG sistemi
     from src.rag_system import TurkishRAGSystem
+    from src.llm_providers import LLMProviderFactory
     from config.settings import settings
 
     rag = TurkishRAGSystem(
@@ -80,15 +107,27 @@ def build_rag_callable(use_mock: bool):
     )
     rag.initialize()
 
+    llm_override = None
+    if provider_override:
+        # Env fallback: --api-key None → look up <PROVIDER>_API_KEY
+        api_key = api_key_override or os.getenv(f"{provider_override.upper()}_API_KEY")
+        llm_override = LLMProviderFactory.create(
+            provider_override,
+            api_key=api_key,
+            model=model_override,
+        )
+        print(f"[info] LLM override: {provider_override} "
+              f"(model={getattr(llm_override, 'model', '?')})")
+
     def real(question: str) -> RAGOutput:
-        result = rag.ask(question)
+        result = rag.ask(question, llm_provider=llm_override)
         return RAGOutput(
             answer=result.get("answer", ""),
             retrieved_sources=[
                 d.get("source", "") for d in result.get("source_documents", [])
             ],
             retrieved_context=result.get("context_used", ""),
-            model=rag.model_type,
+            model=provider_override or rag.model_type,
         )
 
     return real, rag
@@ -130,10 +169,14 @@ def main() -> int:
     print(f"Items:    {len(items)}")
 
     if args.mock_rag:
-        rag_callable = build_rag_callable(use_mock=True)
-        rag_obj = None
+        rag_callable, rag_obj = build_rag_callable(use_mock=True)
     else:
-        rag_callable, rag_obj = build_rag_callable(use_mock=False)
+        rag_callable, rag_obj = build_rag_callable(
+            use_mock=False,
+            provider_override=args.provider,
+            api_key_override=args.api_key,
+            model_override=args.model,
+        )
 
     evaluators = build_evaluators(layer_set, rag_obj=rag_obj, with_judge=args.with_judge)
     if not evaluators:

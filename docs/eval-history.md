@@ -79,6 +79,72 @@ FAIL (9/12):  ortalama 0.526
 
 ---
 
+## v1 — Naive RAG + Groq LLM (2026-05-18)
+
+**Branch:** `feat/baseline-v1-groq`
+**Komut:** `python scripts/run_eval.py --provider groq --layers L1,L2,L3 --name baseline-v1-groq`
+**Değişen:** Sadece LLM provider — local fallback → Groq `llama-3.3-70b-versatile`. Retrieval, embedder, chunking, prompt aynı.
+
+### Özet
+
+| Katman | v0 score | v1 score | Δ | v0 pass | v1 pass |
+|---|---|---|---|---|---|
+| L1 (rules)    | 0.793 | **0.884** | **+0.092** | 100% | 100% |
+| L2 (vector)   | 0.820 | **0.843** | +0.023 | 92% | 83% |
+| L3 (lexical)  | 0.116 | **0.266** | **+0.150** ⭐ | 25% | 58% |
+| **Overall**   | **0.5762** | **0.6645** | **+0.0883** | 3/12 | 7/12 |
+
+### Zorluk bazında
+
+| Zorluk | v0 | v1 | Δ |
+|---|---|---|---|
+| easy   | 0.595 | 0.650 | +0.055 |
+| medium | 0.558 | 0.679 | **+0.122** ← en büyük kategori kazancı |
+| hard   | 0.575 | 0.665 | +0.089 |
+
+### Per-item delta (en çok kazanan ve kaybeden)
+
+| Item | v0 | v1 | Δ |
+|---|---|---|---|
+| **hard-01-python-kullanim-yerleri** | 0.481 | 0.798 | **+0.316** |
+| **medium-02-python-isim-kaynagi**   | 0.512 | 0.763 | **+0.251** |
+| **medium-04-derin-ogrenme**         | 0.521 | 0.714 | **+0.193** |
+| **easy-01-algoritma-tanim**         | 0.612 | 0.773 | +0.161 |
+| hard-03-multi-hop                   | 0.494 | 0.566 | +0.071 |
+| medium-03-veri-yapilari             | 0.488 | 0.518 | +0.030 ← hâlâ retrieval bias |
+| **edge-01-out-of-domain**           | 0.564 | 0.523 | **−0.041** ⚠ |
+
+### Yorumlar
+
+**1. Hipotez doğrulandı: cloud LLM, L3'te en büyük tekil kazancı verdi.**
+v0 baseline analizinde "L3 düşüklüğü en büyük tek hedef, cloud LLM +0.20-0.30 bekleniyor" demiştik. **+0.150** geldi — beklenenin biraz altı ama yön doğru. Lexical pass oranı %25 → %58'e çıktı.
+
+**2. L1 de iyileşti (+0.092).** Bu beklenmedik bir kazançtı: Groq cevapları daha keyword-rich + bad-pattern içermiyor (local LLM bazen kalıp "Bu konuda…" döndürüyordu).
+
+**3. L2 (vector) pass rate aslında düştü (%92 → %83).** Average yükseldi ama eşik aşımı azaldı; bu, Groq'un bazı sorularda biraz farklı anlamsal yörünge takip ettiğini gösteriyor (örn. medium-03 hâlâ yanlış kaynak çekiyor → cevap context'inden uzaklaşıyor).
+
+**4. medium kategorisi en büyük kazancı aldı (+0.122).** Medium sorular detay ister; Groq detaylı cevap üretiyor.
+
+**5. edge-01 (out-of-domain) gerilemesi: ⚠️**
+Local fallback "bilgi yok" diyebiliyordu; Groq "yetersiz veri ama genel bilgilerim şu…" diyerek yarı-halüsinasyon yapıyor. Bu, faithfulness sorununu işaret ediyor. **L4 (LLM judge)** bu örneği critical=true ile işaretliyor; gelecek branch'te ölçeceğiz.
+
+**6. medium-03-veri-yapilari hâlâ failing.** Retrieval bias problemi: `Veri_bilimi.json` çekiliyor, `Veri_yapıları.json` olmalı. Cloud LLM bunu çözemiyor çünkü context yanlış. **Hybrid retrieval (BM25)** gerekli.
+
+### İyileştirme hedefleri (güncellenmiş)
+
+| Hedef | Beklenen kazanım | Niye? |
+|---|---|---|
+| `feat/hybrid-retrieval` | medium-03 +0.20, L2 pass +%10 | BM25 "veri yapıları" terimini kesin yakalar |
+| `feat/reranker` | L2 +0.05, edge-01 daha iyi | Cross-encoder relevance |
+| `feat/query-understanding` | edge-01 +0.20, halüsinasyon ↓ | OOD detection net red |
+| `feat/memory` | Çoklu turn senaryolarında | Mevcut testset'i etkilemez |
+
+### Rate limit notu
+
+Groq free tier 12K TPM (token-per-minute). İlk çalıştırmada 3 hard soru 429'a takıldı. `GroqProvider` artık 429'da error mesajındaki "try again in Xs" ipucunu okuyup tek-seferlik backoff retry yapıyor (`MAX_RETRY_WAIT_S=75`). Test: `tests/test_groq_provider.py::TestRateLimitRetry`.
+
+---
+
 ## Şablon: yeni branch sonrası ekleme formatı
 
 ```markdown

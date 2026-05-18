@@ -95,6 +95,45 @@ class TestGroqGeneralPrompt:
         assert "Yapay zeka nedir?" in prompt
 
 
+class TestRateLimitRetry:
+    @patch("time.sleep", lambda *_: None)  # no actual sleep in tests
+    @patch("src.llm_providers.requests.post")
+    def test_429_then_200_retries_once(self, mock_post):
+        # First call: 429 with "try again in X" hint; second call: 200
+        rl = MagicMock()
+        rl.status_code = 429
+        rl.text = 'Rate limit reached. Please try again in 0.5s.'
+
+        ok = _ok_response("Retry succeeded")
+        mock_post.side_effect = [rl, ok]
+
+        p = GroqProvider(api_key="gsk_fake")
+        out = p.generate("Hi")
+        assert out == "Retry succeeded"
+        assert mock_post.call_count == 2
+
+    @patch("time.sleep", lambda *_: None)
+    @patch("src.llm_providers.requests.post")
+    def test_429_twice_gives_up(self, mock_post):
+        # Both calls hit 429
+        rl = MagicMock()
+        rl.status_code = 429
+        rl.text = "Rate limit reached."
+        mock_post.return_value = rl
+
+        p = GroqProvider(api_key="gsk_fake")
+        out = p.generate("Hi")
+        assert "429" in out or "rate limit" in out.lower()
+        # Only retries once
+        assert mock_post.call_count == 2
+
+    def test_parse_retry_wait(self):
+        assert GroqProvider._parse_retry_wait("try again in 12.5s") == 12.5
+        assert GroqProvider._parse_retry_wait("try again in 0.123s") == 0.123
+        assert GroqProvider._parse_retry_wait("no hint here") is None
+        assert GroqProvider._parse_retry_wait("") is None
+
+
 class TestFactoryWithGroq:
     def test_create_groq_requires_key(self):
         with pytest.raises(ValueError, match="API key"):
