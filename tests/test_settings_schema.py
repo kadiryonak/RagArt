@@ -263,6 +263,37 @@ class TestMemoryParsing:
         }))
         assert s.history == []
 
+    def test_base64_history_decoded(self):
+        """Yeni client base64 ile Türkçe karakter içeren history yollar."""
+        import base64, json
+        h = [
+            {"role": "user", "content": "algoritma nedir? Türkçe karakter: ç, ğ, ş, ı, ö, ü"},
+            {"role": "assistant", "content": "Algoritma adım adım..."},
+        ]
+        payload = "b64:" + base64.b64encode(
+            json.dumps(h, ensure_ascii=False).encode("utf-8")
+        ).decode("ascii")
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": payload,
+        }))
+        assert len(s.history) == 2
+        assert "ç, ğ, ş, ı, ö, ü" in s.history[0]["content"]
+
+    def test_base64_invalid_falls_back_empty(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": "b64:not!!valid$$base64",
+        }))
+        assert s.history == []
+
+    def test_plain_json_still_works_backcompat(self):
+        """Eski client'lar düz JSON yollasa bile parse edilebilmeli."""
+        import json
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": json.dumps([{"role": "user", "content": "ascii only"}]),
+        }))
+        assert len(s.history) == 1
+        assert s.history[0]["content"] == "ascii only"
+
     def test_history_cap_200(self):
         import json
         h = [{"role": "user", "content": f"q{i}"} for i in range(300)]

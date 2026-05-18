@@ -1511,7 +1511,13 @@
             if (userSettings.memoryStrategy && userSettings.memoryStrategy !== 'none') {
                 h['X-Memory-Strategy'] = userSettings.memoryStrategy;
                 if (conversationHistory.length > 0) {
-                    h['X-Conversation-History'] = JSON.stringify(conversationHistory);
+                    // HTTP header values must be ISO-8859-1; Turkish characters
+                    // in JSON break fetch(). Base64-encode the UTF-8 bytes so the
+                    // header value is pure ASCII. The server tries base64 first
+                    // and falls back to plain JSON for backwards compatibility.
+                    const json = JSON.stringify(conversationHistory);
+                    const utf8 = unescape(encodeURIComponent(json));
+                    h['X-Conversation-History'] = 'b64:' + btoa(utf8);
                 }
             }
             return h;

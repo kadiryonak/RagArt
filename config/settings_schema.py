@@ -185,13 +185,28 @@ def parse_request_settings(headers) -> RequestSettings:
     history: list = []
     hist_raw = headers.get("X-Conversation-History")
     if hist_raw:
-        try:
-            data = json.loads(hist_raw)
-            if isinstance(data, list):
-                # Cap to a sensible max so a huge header can't OOM the server
-                history = data[-200:]
-        except (ValueError, TypeError):
-            history = []
+        # The client base64-encodes the UTF-8 JSON because HTTP header values
+        # are restricted to ISO-8859-1 (browsers reject Turkish chars in raw
+        # JSON headers). New clients send "b64:..." prefix; older clients
+        # might still send plain JSON, so try both.
+        decoded_raw: str | None = None
+        if hist_raw.startswith("b64:"):
+            import base64
+            try:
+                decoded_raw = base64.b64decode(hist_raw[4:]).decode("utf-8")
+            except Exception:
+                decoded_raw = None
+        else:
+            decoded_raw = hist_raw
+
+        if decoded_raw is not None:
+            try:
+                data = json.loads(decoded_raw)
+                if isinstance(data, list):
+                    # Cap to a sensible max so a huge header can't OOM
+                    history = data[-200:]
+            except (ValueError, TypeError):
+                history = []
 
     def _bool_header(name: str) -> bool:
         return (headers.get(name) or "").strip().lower() in ("1", "true", "yes", "on")
