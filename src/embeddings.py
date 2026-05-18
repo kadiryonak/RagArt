@@ -9,8 +9,14 @@ try:
 except ImportError:
     from langchain.embeddings import HuggingFaceEmbeddings
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except ImportError:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+try:
+    from langchain_core.documents import Document
+except ImportError:
+    from langchain_core.schema import Document
 
 from src.utils import get_logger, StatusEmoji
 

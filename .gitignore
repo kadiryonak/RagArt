@@ -110,3 +110,15 @@ models/
 
 
 
+
+# Local Claude Code config / session data
+.claude/
+
+# Generated evaluation reports
+tests/evaluation/reports/*.md
+tests/evaluation/reports/*.json
+
+# But keep frozen reference baselines
+!tests/evaluation/baselines/
+!tests/evaluation/baselines/*.md
+!tests/evaluation/baselines/*.json
