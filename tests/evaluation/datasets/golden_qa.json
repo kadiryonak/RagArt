@@ -1,0 +1,122 @@
+[
+  {
+    "id": "easy-01-algoritma-tanim",
+    "question": "Algoritma nedir?",
+    "reference_answer": "Algoritma, belirli bir problemi çözmek veya bir amaca ulaşmak için tasarlanmış, başlangıç ve son durumları açıkça tanımlanmış, sonlu sayıda adımdan oluşan işlemler kümesidir. Genellikle bilgisayar programlamasında kullanılır ve programlama dillerinin temelini oluşturur.",
+    "keywords": ["algoritma", "problem", "adım", "sonlu"],
+    "expected_sources": ["Algoritma.json"],
+    "difficulty": "easy",
+    "category": "factual",
+    "critical": true
+  },
+  {
+    "id": "easy-02-python-tanim",
+    "question": "Python nedir ve hangi alanlarda kullanılır?",
+    "reference_answer": "Python, nesne yönelimli, yorumlamalı ve yüksek seviyeli bir programlama dilidir. Sistem programlama, web geliştirme, veri bilimi, makine öğrenmesi, ağ programlama gibi pek çok alanda kullanılır. Django, Flask gibi web çatıları, TensorFlow ve PyTorch gibi makine öğrenmesi kütüphaneleri Python ekosistemindedir.",
+    "keywords": ["Python", "programlama", "nesne yönelimli", "yorumlamalı"],
+    "expected_sources": ["Python_(programlama_dili).json"],
+    "difficulty": "easy",
+    "category": "factual",
+    "critical": false
+  },
+  {
+    "id": "easy-03-yapay-zeka",
+    "question": "Yapay zeka nedir?",
+    "reference_answer": "Yapay zeka, makinelerin insan benzeri zeka gerektiren görevleri (öğrenme, problem çözme, dil anlama, görsel tanıma) yerine getirebilme yeteneğidir. Makine öğrenmesi, derin öğrenme, doğal dil işleme ve bilgisayarla görme gibi alt dalları kapsar.",
+    "keywords": ["yapay zeka", "makine", "öğrenme"],
+    "expected_sources": ["Yapay_zeka.json"],
+    "difficulty": "easy",
+    "category": "factual",
+    "critical": true
+  },
+  {
+    "id": "medium-01-algoritma-tarih",
+    "question": "Algoritma kelimesi nereden gelir ve ilk algoritma kim tarafından yazılmıştır?",
+    "reference_answer": "Algoritma kelimesi, 9. yüzyılda yaşamış Özbekistan kökenli matematikçi Ebu Abdullah Muhammed İbn Musa el-Harezmi'nin isminden gelir. Avrupalıların onun ismini telaffuz edemediği için 'algorizm' sözcüğü türemiş, sonradan 'algoritma' olmuştur. El-Harezmi'nin 'Hisab el-cebir ve el-mukabala' isimli eseri ilk algoritma koleksiyonunu içerir.",
+    "keywords": ["el-Harezmi", "Harezm", "9. yüzyıl", "cebir"],
+    "expected_sources": ["Algoritma.json"],
+    "difficulty": "medium",
+    "category": "factual",
+    "critical": true
+  },
+  {
+    "id": "medium-02-python-isim-kaynagi",
+    "question": "Python programlama dilinin ismi nereden gelir?",
+    "reference_answer": "Python ismi, dilin yaratıcısı Guido van Rossum'un keyifle izlediği İngiliz komedi grubu Monty Python'dan gelir. Yılan ile bir alakası yoktur. Monty Python'ın etkisi, Python literatüründe 'foo' ve 'bar' yerine 'spam' ve 'eggs' gibi metasentaktik değişken isimlerinde de görülür.",
+    "keywords": ["Monty Python", "Guido van Rossum", "komedi"],
+    "expected_sources": ["Python_(programlama_dili).json"],
+    "difficulty": "medium",
+    "category": "factual",
+    "critical": false
+  },
+  {
+    "id": "medium-03-veri-yapilari",
+    "question": "Veri yapıları nedir ve hangi temel türleri vardır?",
+    "reference_answer": "Veri yapıları, verilerin bilgisayar belleğinde verimli şekilde organize edilmesi ve depolanması için kullanılan düzenlemelerdir. Temel veri yapıları arasında diziler (Array), bağlı listeler (Linked List), yığınlar (Stack), kuyruklar (Queue), ağaçlar (Tree) ve çizgeler (Graph) bulunur.",
+    "keywords": ["dizi", "liste", "yığın", "kuyruk", "ağaç"],
+    "expected_sources": ["Veri_yapıları.json"],
+    "difficulty": "medium",
+    "category": "factual",
+    "critical": false
+  },
+  {
+    "id": "medium-04-derin-ogrenme",
+    "question": "Derin öğrenme ile makine öğrenmesi arasındaki fark nedir?",
+    "reference_answer": "Makine öğrenmesi, verilerden örüntü öğrenen algoritmaların genel adıdır ve klasik istatistiksel yöntemleri içerir. Derin öğrenme, makine öğrenmesinin bir alt dalıdır ve çok katmanlı yapay sinir ağları kullanır. Derin öğrenme özellikle büyük veri ve karmaşık örüntüler (görüntü, ses, dil) için güçlü olup, otomatik özellik çıkarımı yapar.",
+    "keywords": ["makine öğrenmesi", "derin öğrenme", "sinir ağı", "katman"],
+    "expected_sources": ["Derin_öğrenme.json", "Makine_öğrenmesi.json"],
+    "difficulty": "medium",
+    "category": "analytical",
+    "critical": true
+  },
+  {
+    "id": "hard-01-python-kullanim-yerleri",
+    "question": "Hangi büyük kurumlar ve projeler Python kullanır?",
+    "reference_answer": "Python pek çok büyük kuruluş tarafından kullanılır: Google, NASA, CERN, Facebook, Amazon, Instagram, Spotify, Wikipedia ve Reddit gibi şirketler/projeler örnek verilebilir. Django, Zope uygulama sunucuları, YouTube ve orijinal BitTorrent istemcisi de Python ile geliştirilmiş önemli projelerdir.",
+    "keywords": ["Google", "NASA", "CERN", "YouTube"],
+    "expected_sources": ["Python_(programlama_dili).json"],
+    "difficulty": "hard",
+    "category": "synthesis",
+    "critical": false
+  },
+  {
+    "id": "hard-02-algoritma-elestirisi",
+    "question": "Algoritmalara yöneltilen toplumsal eleştiriler nelerdir?",
+    "reference_answer": "Algoritmalara yöneltilen eleştiriler, özellikle sosyal bilimciler tarafından dile getirilmektedir: algoritmaların toplumsal bir güce sahip olduğu, toplumsal gruplar arasındaki eşitsizlikleri derinleştirdiği, yeni güç dengeleri oluşturduğu ve farklı otoriteler tarafından toplumun belli kesimlerini baskılamak için kullanıldığı gibi noktalar öne çıkmaktadır.",
+    "keywords": ["eşitsizlik", "toplumsal", "güç"],
+    "expected_sources": ["Algoritma.json"],
+    "difficulty": "hard",
+    "category": "analytical",
+    "critical": false
+  },
+  {
+    "id": "hard-03-multi-hop",
+    "question": "Python'dan etkilenen programlama dilleri hangileridir ve bu diller hangi özellikleri ödünç almıştır?",
+    "reference_answer": "Python'dan etkilenen diller arasında Boo, Cobra, CoffeeScript, GDScript, Go, Groovy, Julia, Nim, Ruby ve Swift bulunur. Boo, Cobra ve Nim benzer girintileme ve sözdizimi kullanır. JavaScript Python'dan yineleyici ve oluşturucuları ödünç almıştır. Go, 'Python gibi dinamik bir dilde çalışma hızı' hedefiyle dilim sözdizimini benzer şekilde tasarlamıştır.",
+    "keywords": ["Boo", "Go", "Ruby", "Swift", "girintileme"],
+    "expected_sources": ["Python_(programlama_dili).json"],
+    "difficulty": "hard",
+    "category": "synthesis",
+    "critical": true
+  },
+  {
+    "id": "edge-01-out-of-domain",
+    "question": "Türkiye'de 2023 deprem felaketinin etkileri nelerdir?",
+    "reference_answer": "Bu konu bilgi tabanında yer almıyor. Sistem 'verilen bilgilerde yeterli detay bulunmuyor' veya benzer bir red mesajı vermelidir; halüsinasyon yapmamalıdır.",
+    "keywords": [],
+    "expected_sources": [],
+    "difficulty": "hard",
+    "category": "edge_case",
+    "critical": true
+  },
+  {
+    "id": "edge-02-bos-soru",
+    "question": "?",
+    "reference_answer": "Sistem boş veya anlamsız soruyu reddetmeli, kullanıcıdan netleştirme istemelidir.",
+    "keywords": [],
+    "expected_sources": [],
+    "difficulty": "easy",
+    "category": "edge_case",
+    "critical": false
+  }
+]
