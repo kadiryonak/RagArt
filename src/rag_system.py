@@ -6,7 +6,10 @@ from typing import Any, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
-from langchain.vectorstores import Chroma
+try:
+    from langchain_chroma import Chroma
+except ImportError:
+    from langchain.vectorstores import Chroma
 from langchain.schema import Document
 
 from src.document_loader import JSONDocumentLoader, create_sample_data
@@ -18,7 +21,7 @@ logger = get_logger(__name__)
 
 
 # Turkish system prompt template for RAG
-TURKISH_SYSTEM_PROMPT = """Sen Türkçe konuşan bir yapay zeka asistanısın. Görentin verilen BAĞLAM bilgilerini kullanarak kullanıcının sorusunu yanıtla.
+TURKISH_SYSTEM_PROMPT = """Sen Türkçe konuşan bir yapay zeka asistanısın. Görevin verilen BAĞLAM bilgilerini kullanarak kullanıcının sorusunu yanıtla.
 
 KURALLAR:
 1. Sadece verilen BAĞLAM bilgilerini kullan

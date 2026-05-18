@@ -1,334 +1,744 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr" data-theme="light">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Turkish RAG System</title>
+    <title>RagArt — Turkish RAG System</title>
     <meta name="description" content="A Retrieval-Augmented Generation system for Turkish language question answering">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
     <style>
+        :root {
+            /* Light mode — warm, soft mid-tones (eye-friendly, not stark white) */
+            --bg: #f4f1ec;
+            --bg-gradient: linear-gradient(135deg, #ede8e0 0%, #f4f1ec 60%, #ecebe6 100%);
+            --surface: #fbf9f5;
+            --surface-elevated: #ffffff;
+            --surface-hover: #f0ece4;
+            --border: #e0dbd1;
+            --border-strong: #c9c2b4;
+            --text: #2b2823;
+            --text-secondary: #6e6960;
+            --text-muted: #99948a;
+            --accent: #6d5cf0;
+            --accent-hover: #5849d6;
+            --accent-soft: rgba(109, 92, 240, 0.10);
+            --accent-soft-strong: rgba(109, 92, 240, 0.18);
+            --success: #4f9a6a;
+            --success-soft: rgba(79, 154, 106, 0.12);
+            --danger: #c25a5a;
+            --danger-soft: rgba(194, 90, 90, 0.12);
+            --warning: #c69143;
+            --warning-soft: rgba(198, 145, 67, 0.14);
+            --info: #4a90c2;
+            --info-soft: rgba(74, 144, 194, 0.12);
+            --shadow-sm: 0 1px 2px rgba(30, 28, 25, 0.04);
+            --shadow: 0 4px 12px rgba(30, 28, 25, 0.06);
+            --shadow-lg: 0 12px 32px rgba(30, 28, 25, 0.08);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-lg: 16px;
+        }
+
+        [data-theme="dark"] {
+            --bg: #0f1218;
+            --bg-gradient: linear-gradient(135deg, #0d1016 0%, #131720 60%, #0f1218 100%);
+            --surface: #181c25;
+            --surface-elevated: #20252f;
+            --surface-hover: #252b37;
+            --border: #2a303b;
+            --border-strong: #3a4150;
+            --text: #e6e4df;
+            --text-secondary: #a0a3ab;
+            --text-muted: #6c7079;
+            --accent: #8b7df5;
+            --accent-hover: #a395f8;
+            --accent-soft: rgba(139, 125, 245, 0.14);
+            --accent-soft-strong: rgba(139, 125, 245, 0.22);
+            --success: #6dba83;
+            --success-soft: rgba(109, 186, 131, 0.14);
+            --danger: #e07a7a;
+            --danger-soft: rgba(224, 122, 122, 0.14);
+            --warning: #e0b370;
+            --warning-soft: rgba(224, 179, 112, 0.16);
+            --info: #6aaedb;
+            --info-soft: rgba(106, 174, 219, 0.14);
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+            --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-gradient);
+            background-attachment: fixed;
+            color: var(--text);
             min-height: 100vh;
-            padding: 20px;
+            padding: 24px;
+            font-size: 15px;
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        code,
+        .mono {
+            font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1280px;
             margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
             overflow: hidden;
+            transition: background 0.3s ease, border-color 0.3s ease;
         }
 
+        /* Header */
         .header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
-            padding: 25px;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 22px 28px;
+            background: var(--surface-elevated);
+            border-bottom: 1px solid var(--border);
+            gap: 16px;
+            flex-wrap: wrap;
         }
 
-        .header h1 {
-            font-size: 2.2em;
-            margin-bottom: 8px;
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
         }
 
-        .header p {
-            font-size: 1em;
-            opacity: 0.9;
+        .brand-icon {
+            width: 42px;
+            height: 42px;
+            display: grid;
+            place-items: center;
+            background: var(--accent-soft);
+            border: 1px solid var(--accent-soft-strong);
+            border-radius: var(--radius-sm);
+            color: var(--accent);
+        }
+
+        .brand-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .brand-text h1 {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin: 0;
+        }
+
+        .brand-text p {
+            font-size: 12.5px;
+            color: var(--text-secondary);
+            margin: 1px 0 0;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .theme-toggle {
+            width: 40px;
+            height: 40px;
+            display: grid;
+            place-items: center;
+            background: var(--surface);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--surface-hover);
+            color: var(--accent);
+            border-color: var(--accent-soft-strong);
+        }
+
+        .theme-toggle svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        [data-theme="light"] .icon-moon {
+            display: block;
+        }
+
+        [data-theme="light"] .icon-sun {
+            display: none;
+        }
+
+        [data-theme="dark"] .icon-moon {
+            display: none;
+        }
+
+        [data-theme="dark"] .icon-sun {
+            display: block;
         }
 
         /* Tabs */
         .tabs {
             display: flex;
-            background: #f1f3f5;
-            border-bottom: 1px solid #dee2e6;
+            background: var(--surface);
+            padding: 6px;
+            margin: 16px 24px 0;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            gap: 4px;
         }
 
         .tab-btn {
             flex: 1;
-            padding: 15px;
+            padding: 10px 16px;
             border: none;
             background: transparent;
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 14px;
+            font-weight: 500;
+            font-family: inherit;
             cursor: pointer;
-            transition: all 0.3s ease;
-            color: #6c757d;
+            color: var(--text-secondary);
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
         .tab-btn:hover {
-            background: #e9ecef;
+            color: var(--text);
+            background: var(--surface-hover);
         }
 
         .tab-btn.active {
-            background: white;
-            color: #667eea;
-            border-bottom: 3px solid #667eea;
+            background: var(--surface-elevated);
+            color: var(--accent);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .tab-btn svg {
+            width: 16px;
+            height: 16px;
         }
 
         .tab-content {
             display: none;
-            padding: 25px;
+            padding: 24px;
         }
 
         .tab-content.active {
             display: block;
+            animation: fadeIn 0.25s ease;
         }
 
-        /* Question Tab */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Main grid */
         .main-content {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 25px;
+            grid-template-columns: 1fr 1.1fr;
+            gap: 20px;
         }
 
         .panel {
-            background: #f8f9fa;
-            border-radius: 12px;
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
             padding: 20px;
-            border: 2px solid #e9ecef;
+            transition: border-color 0.2s ease;
         }
 
-        .panel h3 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-            font-size: 1.2em;
+        .panel-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 14px;
+            letter-spacing: -0.01em;
         }
 
+        .panel-title svg {
+            width: 16px;
+            height: 16px;
+            color: var(--accent);
+        }
+
+        /* Inputs */
         .question-input {
             width: 100%;
-            min-height: 100px;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 15px;
+            min-height: 130px;
+            padding: 14px 16px;
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 14.5px;
             font-family: inherit;
+            color: var(--text);
             resize: vertical;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            line-height: 1.5;
+        }
+
+        .question-input::placeholder {
+            color: var(--text-muted);
         }
 
         .question-input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
         }
 
+        .input-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        kbd {
+            background: var(--surface);
+            border: 1px solid var(--border-strong);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+        }
+
+        /* Buttons */
         .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 11px 18px;
+            border: 1px solid transparent;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            font-family: inherit;
             cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 12px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .btn svg {
+            width: 16px;
+            height: 16px;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--accent);
             color: white;
             width: 100%;
+            margin-top: 12px;
         }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+        .btn-primary:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px var(--accent-soft-strong);
         }
 
         .btn-secondary {
-            background: #6c757d;
-            color: white;
+            background: var(--surface);
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: var(--surface-hover);
+            border-color: var(--border-strong);
         }
 
         .btn-success {
-            background: #28a745;
+            background: var(--success);
             color: white;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            filter: brightness(1.05);
+            transform: translateY(-1px);
         }
 
         .btn-danger {
-            background: #dc3545;
+            background: var(--danger-soft);
+            color: var(--danger);
+            padding: 7px 12px;
+            font-size: 12.5px;
+            border-color: transparent;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: var(--danger);
             color: white;
-            padding: 6px 12px;
-            font-size: 12px;
         }
 
         .btn:disabled {
-            opacity: 0.6;
+            opacity: 0.55;
             cursor: not-allowed;
-            transform: none;
+            transform: none !important;
         }
 
+        /* Answer area */
         .answer-box {
-            background: #d4edda;
-            border-radius: 12px;
-            padding: 20px;
-            border-left: 4px solid #28a745;
-        }
-
-        .answer-box h3 {
-            color: #155724;
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--success);
+            border-radius: var(--radius);
+            padding: 18px 20px;
         }
 
         .answer-content {
-            color: #155724;
-            line-height: 1.6;
-            min-height: 80px;
+            color: var(--text);
+            line-height: 1.65;
+            min-height: 70px;
             white-space: pre-wrap;
+            font-size: 14.5px;
+        }
+
+        .answer-content.empty {
+            color: var(--text-muted);
+            font-style: italic;
         }
 
         .sources-box {
-            background: #e7f3ff;
-            border-radius: 12px;
-            padding: 15px;
-            border-left: 4px solid #007bff;
-            max-height: 200px;
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--info);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin-top: 14px;
+            max-height: 280px;
             overflow-y: auto;
-            margin-top: 15px;
         }
 
-        .sources-box h4 {
-            color: #004085;
-            margin-bottom: 10px;
+        .sources-box::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .sources-box::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sources-box::-webkit-scrollbar-thumb {
+            background: var(--border-strong);
+            border-radius: 4px;
         }
 
         .source-item {
-            background: white;
-            padding: 10px;
-            margin: 6px 0;
-            border-radius: 6px;
-            border: 1px solid #b8daff;
+            background: var(--surface);
+            padding: 11px 13px;
+            margin: 8px 0;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
             font-size: 13px;
+        }
+
+        .source-item:first-of-type {
+            margin-top: 10px;
         }
 
         .source-title {
             font-weight: 600;
-            color: #004085;
+            color: var(--accent);
+            margin-bottom: 4px;
+            font-size: 12.5px;
         }
 
-        /* Upload Tab */
+        .source-content {
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* Upload zone */
         .upload-zone {
-            border: 3px dashed #667eea;
-            border-radius: 12px;
-            padding: 40px;
+            border: 2px dashed var(--border-strong);
+            background: var(--surface-elevated);
+            border-radius: var(--radius);
+            padding: 44px 24px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s ease;
-            background: #f8f9ff;
+            transition: all 0.25s ease;
         }
 
         .upload-zone:hover,
         .upload-zone.dragover {
-            border-color: #764ba2;
-            background: #f0f0ff;
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .upload-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 14px;
+            display: grid;
+            place-items: center;
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-radius: 50%;
+        }
+
+        .upload-icon svg {
+            width: 24px;
+            height: 24px;
         }
 
         .upload-zone h3 {
-            color: #667eea;
-            margin-bottom: 10px;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
         }
 
         .upload-zone p {
-            color: #6c757d;
+            color: var(--text-secondary);
+            font-size: 13.5px;
+            margin: 2px 0;
+        }
+
+        .upload-zone .hint {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-top: 8px;
         }
 
         #fileInput {
             display: none;
         }
 
-        .file-list {
-            margin-top: 20px;
+        /* File list */
+        .file-list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 22px 0 12px;
+        }
+
+        .file-list-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge {
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 11.5px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 999px;
         }
 
         .file-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: white;
-            padding: 12px 15px;
+            background: var(--surface-elevated);
+            padding: 13px 16px;
             margin: 8px 0;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .file-item:hover {
+            border-color: var(--border-strong);
+            background: var(--surface-hover);
         }
 
         .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             flex: 1;
+            min-width: 0;
+        }
+
+        .file-icon {
+            width: 36px;
+            height: 36px;
+            display: grid;
+            place-items: center;
+            background: var(--info-soft);
+            color: var(--info);
+            border-radius: var(--radius-sm);
+            flex-shrink: 0;
+        }
+
+        .file-icon svg {
+            width: 18px;
+            height: 18px;
         }
 
         .file-name {
-            font-weight: 600;
-            color: #2c3e50;
+            font-weight: 500;
+            color: var(--text);
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .file-meta {
             font-size: 12px;
-            color: #6c757d;
+            color: var(--text-muted);
+            margin-top: 1px;
         }
 
         .action-bar {
             display: flex;
-            gap: 10px;
-            margin-top: 20px;
+            gap: 12px;
+            align-items: center;
+            margin-top: 22px;
             padding-top: 20px;
-            border-top: 1px solid #e9ecef;
+            border-top: 1px solid var(--border);
+            flex-wrap: wrap;
         }
 
-        /* Status Bar */
+        .action-bar .hint {
+            color: var(--text-muted);
+            font-size: 12.5px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 32px 16px;
+            color: var(--text-muted);
+            font-size: 13.5px;
+        }
+
+        /* Status bar */
         .status-bar {
-            background: #f8f9fa;
-            padding: 12px 25px;
+            background: var(--surface);
+            padding: 12px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 10px;
-            border-top: 1px solid #e9ecef;
+            gap: 14px;
+            border-top: 1px solid var(--border);
+            font-size: 12.5px;
         }
 
-        .status-info {
-            color: #6c757d;
-            font-size: 13px;
+        .status-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-secondary);
+        }
+
+        .status-group svg {
+            width: 14px;
+            height: 14px;
+            color: var(--text-muted);
         }
 
         .status-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 11.5px;
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
         }
 
         .status-ready {
-            background: #d4edda;
-            color: #155724;
+            background: var(--success-soft);
+            color: var(--success);
         }
 
         .status-loading {
-            background: #fff3cd;
-            color: #856404;
+            background: var(--warning-soft);
+            color: var(--warning);
+        }
+
+        .status-loading::before {
+            animation: pulse 1.5s ease-in-out infinite;
         }
 
         .status-error {
-            background: #f8d7da;
-            color: #721c24;
+            background: var(--danger-soft);
+            color: var(--danger);
         }
 
-        .loading::after {
-            content: '';
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        /* Spinner */
+        .spinner {
             display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #667eea;
+            width: 14px;
+            height: 14px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
             border-radius: 50%;
-            border-top-color: transparent;
-            animation: spin 1s linear infinite;
-            margin-left: 8px;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
         }
 
         @keyframes spin {
@@ -337,29 +747,53 @@
             }
         }
 
+        /* Toast */
         .toast {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 15px 25px;
-            border-radius: 8px;
-            color: white;
-            font-weight: 600;
+            bottom: 24px;
+            right: 24px;
+            padding: 13px 18px;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+            font-size: 14px;
             z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border);
+            background: var(--surface-elevated);
             animation: slideIn 0.3s ease;
+            max-width: 360px;
+        }
+
+        .toast svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
         }
 
         .toast-success {
-            background: #28a745;
+            border-left: 3px solid var(--success);
+            color: var(--text);
+        }
+
+        .toast-success svg {
+            color: var(--success);
         }
 
         .toast-error {
-            background: #dc3545;
+            border-left: 3px solid var(--danger);
+            color: var(--text);
+        }
+
+        .toast-error svg {
+            color: var(--danger);
         }
 
         @keyframes slideIn {
             from {
-                transform: translateX(100%);
+                transform: translateX(120%);
                 opacity: 0;
             }
 
@@ -369,21 +803,45 @@
             }
         }
 
-        @media (max-width: 768px) {
+        /* Responsive */
+        @media (max-width: 900px) {
+            body {
+                padding: 12px;
+            }
+
             .main-content {
                 grid-template-columns: 1fr;
             }
 
-            .header h1 {
-                font-size: 1.8em;
+            .header {
+                padding: 16px 20px;
+            }
+
+            .brand-text h1 {
+                font-size: 16px;
             }
 
             .tabs {
-                flex-wrap: wrap;
+                margin: 12px 16px 0;
+            }
+
+            .tab-content {
+                padding: 16px;
             }
 
             .tab-btn {
-                flex: 1 1 50%;
+                font-size: 13px;
+                padding: 9px 10px;
+            }
+
+            .status-bar {
+                padding: 10px 16px;
+            }
+        }
+
+        @media (max-width: 520px) {
+            .tab-btn span.label {
+                display: none;
             }
         }
     </style>
@@ -391,75 +849,214 @@
 
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🤖 Turkish RAG System</h1>
-            <p>Upload your knowledge base, ask questions, get intelligent answers</p>
-        </div>
+        <!-- Header -->
+        <header class="header">
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Z" />
+                        <path d="M12 8v4l3 2" />
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1>RagArt</h1>
+                    <p>Turkish RAG System · Knowledge-Driven QA</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Tema değiştir">
+                    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    </svg>
+                    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="4" />
+                        <path
+                            d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                    </svg>
+                </button>
+            </div>
+        </header>
 
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="question">❓ Ask Question</button>
-            <button class="tab-btn" data-tab="files">📁 Manage Files</button>
-        </div>
+        <!-- Tabs -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="question">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <span class="label">Soru Sor</span>
+            </button>
+            <button class="tab-btn" data-tab="files">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+                <span class="label">Dosyaları Yönet</span>
+            </button>
+        </nav>
 
         <!-- Question Tab -->
-        <div id="question-tab" class="tab-content active">
+        <section id="question-tab" class="tab-content active">
             <div class="main-content">
                 <div class="panel">
-                    <h3>❓ Your Question</h3>
+                    <div class="panel-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                        Sorunuz
+                    </div>
                     <textarea id="questionInput" class="question-input"
-                        placeholder="e.g., Algoritma nedir? (What is an algorithm?)"></textarea>
-                    <button id="askButton" class="btn btn-primary">🔍 Ask Question</button>
+                        placeholder="Bilgi tabanınızdan bir şey sorun... (örn. Algoritma nedir?)"></textarea>
+                    <div class="input-hint">
+                        <kbd>Ctrl</kbd> + <kbd>Enter</kbd> ile sor
+                    </div>
+                    <button id="askButton" class="btn btn-primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        Soruyu Sor
+                    </button>
                 </div>
 
                 <div>
                     <div class="answer-box">
-                        <h3>💬 Answer</h3>
-                        <div id="answerContent" class="answer-content">
-                            Upload your JSON files in the "Manage Files" tab, then ask questions here...
+                        <div class="panel-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                            </svg>
+                            Cevap
+                        </div>
+                        <div id="answerContent" class="answer-content empty">
+                            "Dosyaları Yönet" sekmesinden JSON dosyalarınızı yükleyin, ardından buradan sorunuzu sorun.
                         </div>
                     </div>
 
                     <div class="sources-box">
-                        <h4>📚 Source Documents</h4>
-                        <div id="sourcesContent">Sources will appear here...</div>
+                        <div class="panel-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                            </svg>
+                            Kaynak Belgeler
+                        </div>
+                        <div id="sourcesContent" class="empty-state">Henüz kaynak yok. Bir soru sorduğunuzda burada
+                            görünür.</div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
         <!-- Files Tab -->
-        <div id="files-tab" class="tab-content">
+        <section id="files-tab" class="tab-content">
             <div class="upload-zone" id="uploadZone">
-                <h3>📤 Drop JSON Files Here</h3>
-                <p>or click to select files</p>
-                <p style="margin-top: 10px; font-size: 12px; color: #999;">Supported: .json files up to 16MB</p>
+                <div class="upload-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                </div>
+                <h3>JSON dosyalarını buraya bırakın</h3>
+                <p>ya da seçmek için tıklayın</p>
+                <p class="hint">Desteklenen: .json — maksimum 16MB</p>
                 <input type="file" id="fileInput" accept=".json" multiple>
             </div>
 
-            <div class="file-list">
-                <h3 style="margin-bottom: 15px;">📂 Knowledge Base Files</h3>
-                <div id="fileList">Loading files...</div>
+            <div class="file-list-header">
+                <h3>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                    Bilgi Tabanı Dosyaları
+                </h3>
+                <span class="badge" id="fileListBadge">0</span>
             </div>
+            <div id="fileList" class="empty-state">Dosyalar yükleniyor...</div>
 
             <div class="action-bar">
-                <button id="reindexBtn" class="btn btn-success">🔄 Reindex Knowledge Base</button>
-                <span style="color: #6c757d; font-size: 13px; margin-left: 10px;">
-                    Click after adding/removing files to update the system
-                </span>
+                <button id="reindexBtn" class="btn btn-success">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10" />
+                        <polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    </svg>
+                    Bilgi Tabanını Yeniden İndeksle
+                </button>
+                <span class="hint">Dosya ekledikten/sildikten sonra sistemi güncellemek için tıklayın</span>
             </div>
-        </div>
+        </section>
 
-        <div class="status-bar">
-            <div class="status-info">
-                📊 Status: <span id="systemStatus" class="status-badge status-loading">Loading...</span>
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-group">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                </svg>
+                Durum:
+                <span id="systemStatus" class="status-badge status-loading">Yükleniyor...</span>
             </div>
-            <div class="status-info">🤖 Model: <span id="modelType">-</span></div>
-            <div class="status-info">📁 Files: <span id="fileCount">-</span></div>
-        </div>
+            <div class="status-group">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                Model: <span class="mono" id="modelType">—</span>
+            </div>
+            <div class="status-group">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+                Dosya: <span class="mono" id="fileCount">—</span>
+            </div>
+        </footer>
     </div>
 
     <script>
-        // Tab switching
+        // ---------- Theme management ----------
+        const THEME_KEY = 'ragart-theme';
+        const html = document.documentElement;
+        const themeToggle = document.getElementById('themeToggle');
+
+        function applyTheme(theme) {
+            html.setAttribute('data-theme', theme);
+            localStorage.setItem(THEME_KEY, theme);
+        }
+
+        function initTheme() {
+            const saved = localStorage.getItem(THEME_KEY);
+            if (saved) {
+                applyTheme(saved);
+            } else {
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                applyTheme(prefersDark ? 'dark' : 'light');
+            }
+        }
+
+        themeToggle.addEventListener('click', () => {
+            const current = html.getAttribute('data-theme');
+            applyTheme(current === 'dark' ? 'light' : 'dark');
+        });
+
+        initTheme();
+
+        // ---------- Tab switching ----------
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -470,16 +1067,35 @@
             });
         });
 
-        // Toast notification
+        // ---------- Toast ----------
+        const ICON_SUCCESS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+        const ICON_ERROR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+
         function showToast(message, type = 'success') {
             const toast = document.createElement('div');
             toast.className = `toast toast-${type}`;
-            toast.textContent = message;
+            toast.innerHTML = `${type === 'success' ? ICON_SUCCESS : ICON_ERROR}<span>${message}</span>`;
             document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(120%)';
+                toast.style.transition = 'all 0.25s ease';
+                setTimeout(() => toast.remove(), 250);
+            }, 3000);
         }
 
-        // File Upload
+        // ---------- Escape helper ----------
+        function escapeHtml(str) {
+            if (str == null) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // ---------- File upload ----------
         const uploadZone = document.getElementById('uploadZone');
         const fileInput = document.getElementById('fileInput');
 
@@ -498,8 +1114,8 @@
 
         async function handleFiles(files) {
             for (const file of files) {
-                if (!file.name.endsWith('.json')) {
-                    showToast(`${file.name}: Only JSON files allowed`, 'error');
+                if (!file.name.toLowerCase().endsWith('.json')) {
+                    showToast(`${file.name}: yalnızca JSON desteklenir`, 'error');
                     continue;
                 }
 
@@ -507,25 +1123,21 @@
                 formData.append('file', file);
 
                 try {
-                    const response = await fetch('/upload', {
-                        method: 'POST',
-                        body: formData
-                    });
+                    const response = await fetch('/upload', { method: 'POST', body: formData });
                     const result = await response.json();
-
                     if (result.success) {
-                        showToast(`${file.name} uploaded successfully!`);
+                        showToast(`${file.name} yüklendi`);
                     } else {
-                        showToast(result.error || 'Upload failed', 'error');
+                        showToast(result.error || 'Yükleme başarısız', 'error');
                     }
                 } catch (error) {
-                    showToast(`Error uploading ${file.name}`, 'error');
+                    showToast(`Yükleme hatası: ${file.name}`, 'error');
                 }
             }
             loadFiles();
         }
 
-        // Load file list
+        // ---------- File list ----------
         async function loadFiles() {
             try {
                 const response = await fetch('/list-files');
@@ -533,30 +1145,50 @@
 
                 const fileList = document.getElementById('fileList');
                 document.getElementById('fileCount').textContent = data.total;
+                document.getElementById('fileListBadge').textContent = data.total;
 
-                if (data.files.length === 0) {
-                    fileList.innerHTML = '<p style="color: #6c757d;">No files uploaded yet. Drop some JSON files above!</p>';
+                if (!data.files || data.files.length === 0) {
+                    fileList.className = 'empty-state';
+                    fileList.innerHTML = 'Henüz dosya yok. Yukarıdan JSON dosyalarınızı yükleyin.';
                     return;
                 }
 
+                fileList.className = '';
                 fileList.innerHTML = data.files.map(file => `
                     <div class="file-item">
                         <div class="file-info">
-                            <div class="file-name">📄 ${file.filename}</div>
-                            <div class="file-meta">${file.document_count || 0} documents • ${file.size_kb || 0} KB</div>
+                            <div class="file-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="file-name">${escapeHtml(file.filename)}</div>
+                                <div class="file-meta">${file.document_count || 0} belge · ${file.size_kb || 0} KB</div>
+                            </div>
                         </div>
-                        <button class="btn btn-danger" onclick="deleteFile('${file.filename}')">🗑️ Delete</button>
+                        <button class="btn btn-danger" data-filename="${escapeHtml(file.filename)}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                            Sil
+                        </button>
                     </div>
                 `).join('');
+
+                fileList.querySelectorAll('.btn-danger').forEach(btn => {
+                    btn.addEventListener('click', () => deleteFile(btn.dataset.filename));
+                });
             } catch (error) {
-                document.getElementById('fileList').innerHTML = '<p style="color: #dc3545;">Error loading files</p>';
+                document.getElementById('fileList').innerHTML =
+                    '<div class="empty-state" style="color: var(--danger);">Dosyalar yüklenirken hata oluştu</div>';
             }
         }
 
-        // Delete file
         async function deleteFile(filename) {
-            if (!confirm(`Delete ${filename}?`)) return;
-
+            if (!confirm(`${filename} silinsin mi?`)) return;
             try {
                 const response = await fetch('/delete-file', {
                     method: 'POST',
@@ -564,42 +1196,41 @@
                     body: JSON.stringify({ filename })
                 });
                 const result = await response.json();
-
                 if (result.success) {
-                    showToast('File deleted');
+                    showToast('Dosya silindi');
                     loadFiles();
                 } else {
-                    showToast(result.error, 'error');
+                    showToast(result.error || 'Silme başarısız', 'error');
                 }
-            } catch (error) {
-                showToast('Delete failed', 'error');
+            } catch {
+                showToast('Silme başarısız', 'error');
             }
         }
 
-        // Reindex
-        document.getElementById('reindexBtn').addEventListener('click', async () => {
-            const btn = document.getElementById('reindexBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="loading">Reindexing</span>';
+        // ---------- Reindex ----------
+        const reindexBtn = document.getElementById('reindexBtn');
+        reindexBtn.addEventListener('click', async () => {
+            const originalHtml = reindexBtn.innerHTML;
+            reindexBtn.disabled = true;
+            reindexBtn.innerHTML = '<span class="spinner"></span> Yeniden indeksleniyor...';
 
             try {
                 const response = await fetch('/reindex', { method: 'POST' });
                 const result = await response.json();
-
                 if (result.success) {
-                    showToast(`Reindexed ${result.document_count} documents!`);
+                    showToast(`${result.document_count} belge yeniden indekslendi`);
                 } else {
-                    showToast(result.error, 'error');
+                    showToast(result.error || 'İndeksleme başarısız', 'error');
                 }
-            } catch (error) {
-                showToast('Reindex failed', 'error');
+            } catch {
+                showToast('İndeksleme başarısız', 'error');
             } finally {
-                btn.disabled = false;
-                btn.innerHTML = '🔄 Reindex Knowledge Base';
+                reindexBtn.disabled = false;
+                reindexBtn.innerHTML = originalHtml;
             }
         });
 
-        // Question asking
+        // ---------- Ask question ----------
         const questionInput = document.getElementById('questionInput');
         const askButton = document.getElementById('askButton');
         const answerContent = document.getElementById('answerContent');
@@ -607,16 +1238,24 @@
 
         askButton.addEventListener('click', askQuestion);
         questionInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.ctrlKey) askQuestion();
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                askQuestion();
+            }
         });
 
         async function askQuestion() {
             const question = questionInput.value.trim();
-            if (!question) return alert('Please enter a question!');
+            if (!question) {
+                showToast('Lütfen bir soru girin', 'error');
+                return;
+            }
 
+            const originalHtml = askButton.innerHTML;
             askButton.disabled = true;
-            askButton.innerHTML = '<span class="loading">Searching</span>';
-            answerContent.innerHTML = '<div class="loading">Searching for answer...</div>';
+            askButton.innerHTML = '<span class="spinner"></span> Aranıyor...';
+            answerContent.className = 'answer-content empty';
+            answerContent.innerHTML = '<span class="spinner"></span> Cevap aranıyor...';
 
             try {
                 const response = await fetch('/ask', {
@@ -624,34 +1263,38 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ question })
                 });
-
                 const result = await response.json();
 
                 if (result.success) {
-                    answerContent.innerHTML = result.answer.replace(/\n/g, '<br>');
+                    answerContent.className = 'answer-content';
+                    answerContent.innerHTML = escapeHtml(result.answer).replace(/\n/g, '<br>');
 
                     if (result.sources && result.sources.length > 0) {
+                        sourcesContent.className = '';
                         sourcesContent.innerHTML = result.sources.map((s, i) => `
                             <div class="source-item">
-                                <div class="source-title">${i + 1}. ${s.title}</div>
-                                <div>${s.content.substring(0, 150)}...</div>
+                                <div class="source-title">${i + 1}. ${escapeHtml(s.title)}</div>
+                                <div class="source-content">${escapeHtml((s.content || '').substring(0, 220))}${s.content && s.content.length > 220 ? '…' : ''}</div>
                             </div>
                         `).join('');
                     } else {
-                        sourcesContent.innerHTML = 'No source documents found.';
+                        sourcesContent.className = 'empty-state';
+                        sourcesContent.innerHTML = 'Kaynak bulunamadı.';
                     }
                 } else {
-                    answerContent.innerHTML = `<span style="color: #dc3545;">❌ ${result.error}</span>`;
+                    answerContent.className = 'answer-content';
+                    answerContent.innerHTML = `<span style="color: var(--danger);">${escapeHtml(result.error || 'Hata')}</span>`;
                 }
             } catch (error) {
-                answerContent.innerHTML = `<span style="color: #dc3545;">❌ ${error.message}</span>`;
+                answerContent.className = 'answer-content';
+                answerContent.innerHTML = `<span style="color: var(--danger);">${escapeHtml(error.message)}</span>`;
             } finally {
                 askButton.disabled = false;
-                askButton.innerHTML = '🔍 Ask Question';
+                askButton.innerHTML = originalHtml;
             }
         }
 
-        // System status
+        // ---------- System status ----------
         async function checkStatus() {
             try {
                 const response = await fetch('/status');
@@ -659,22 +1302,27 @@
                 const statusEl = document.getElementById('systemStatus');
 
                 if (status.ready) {
-                    statusEl.textContent = 'Ready';
+                    statusEl.textContent = 'Hazır';
                     statusEl.className = 'status-badge status-ready';
-                    document.getElementById('modelType').textContent = status.model_type;
+                    document.getElementById('modelType').textContent = status.model_type || '—';
+                } else if (status.error) {
+                    statusEl.textContent = 'Hata';
+                    statusEl.className = 'status-badge status-error';
+                    setTimeout(checkStatus, 5000);
                 } else {
-                    statusEl.textContent = status.status || 'Loading...';
+                    statusEl.textContent = status.status || 'Yükleniyor...';
                     statusEl.className = 'status-badge status-loading';
                     setTimeout(checkStatus, 2000);
                 }
             } catch (error) {
-                document.getElementById('systemStatus').textContent = 'Error';
-                document.getElementById('systemStatus').className = 'status-badge status-error';
+                const statusEl = document.getElementById('systemStatus');
+                statusEl.textContent = 'Bağlantı hatası';
+                statusEl.className = 'status-badge status-error';
                 setTimeout(checkStatus, 5000);
             }
         }
 
-        // Initialize
+        // ---------- Init ----------
         document.addEventListener('DOMContentLoaded', () => {
             checkStatus();
             loadFiles();

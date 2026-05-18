@@ -261,39 +261,40 @@ def upload_file():
     if not allowed_file(file.filename):
         return jsonify({"error": "Only JSON files are allowed"}), 400
     
+    filepath = None
     try:
         # Secure the filename
         filename = secure_filename(file.filename)
-        
+
         # Ensure data folder exists
         os.makedirs(settings.DATA_FOLDER, exist_ok=True)
-        
+
         # Save the file
         filepath = os.path.join(settings.DATA_FOLDER, filename)
         file.save(filepath)
-        
+
         # Validate JSON content
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        
+
         # Count documents
         doc_count = len(data) if isinstance(data, list) else 1
-        
+
         logger.info(f"{StatusEmoji.SUCCESS} File uploaded: {filename} ({doc_count} documents)")
-        
+
         return jsonify({
             "success": True,
             "filename": filename,
             "document_count": doc_count,
             "message": f"File '{filename}' uploaded successfully. Use /reindex to update the knowledge base."
         })
-        
+
     except json.JSONDecodeError:
         # Remove invalid file
-        if os.path.exists(filepath):
+        if filepath and os.path.exists(filepath):
             os.remove(filepath)
         return jsonify({"error": "Invalid JSON file format"}), 400
-        
+
     except Exception as e:
         logger.error(f"{StatusEmoji.ERROR} Upload error: {e}")
         return jsonify({"error": f"Upload failed: {str(e)}"}), 500
