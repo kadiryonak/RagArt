@@ -1164,10 +1164,10 @@
                         <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
                 </div>
-                <h3>JSON dosyalarını buraya bırakın</h3>
+                <h3>Dosyaları buraya bırakın</h3>
                 <p>ya da seçmek için tıklayın</p>
-                <p class="hint">Desteklenen: .json — maksimum 16MB</p>
-                <input type="file" id="fileInput" accept=".json" multiple>
+                <p class="hint" id="uploadHint">Desteklenen formatlar yükleniyor... — maksimum 16MB</p>
+                <input type="file" id="fileInput" accept=".json,.pdf,.docx,.md,.markdown,.txt" multiple>
             </div>
 
             <div class="file-list-header">
@@ -1252,7 +1252,7 @@
                     <label class="form-label" for="apiKeyInput">
                         API Anahtarı
                         <span class="form-hint" style="margin: 0; font-size: 11px;">
-                            sadece tarayıcıda saklanır
+                            sağlayıcı başına ayrı kaydedilir
                         </span>
                     </label>
                     <div class="key-input-wrap">
@@ -1262,6 +1262,7 @@
                             göster
                         </button>
                     </div>
+                    <div class="form-hint" id="savedKeysSummary">Henüz kayıtlı key yok</div>
                 </div>
 
                 <div class="form-group">
@@ -1273,6 +1274,44 @@
                     </label>
                     <input type="text" id="modelInput" class="form-input"
                            placeholder="örn. llama-3.3-70b-versatile">
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">Retrieval Stratejisi</div>
+                    <div class="form-group">
+                        <label class="form-label" for="retrievalSelect">Yöntem</label>
+                        <select id="retrievalSelect" class="form-select"></select>
+                        <div class="form-hint" id="retrievalHint"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="cursor: pointer;">
+                            <span>Cross-encoder reranker</span>
+                            <input type="checkbox" id="rerankToggle" style="width: auto; margin-left: 8px;">
+                        </label>
+                        <div class="form-hint" id="rerankHint">
+                            Aday belgeleri cross-encoder ile yeniden sıralar.
+                            İlk çağrıda ~400MB model indirir (cache'lenir).
+                            Her sorguya ~500-1000ms ekler.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">Sohbet Hafızası</div>
+                    <div class="form-group">
+                        <label class="form-label" for="memorySelect">Strateji</label>
+                        <select id="memorySelect" class="form-select"></select>
+                        <div class="form-hint" id="memoryHint"></div>
+                    </div>
+                    <div class="form-group">
+                        <button id="clearHistoryBtn" class="btn btn-secondary"
+                                style="width: 100%; margin-top: 0;">
+                            Sohbet geçmişini temizle
+                        </button>
+                        <div class="form-hint" id="historyStatus">
+                            Geçmiş: <span id="historyCount">0</span> mesaj
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-section">
@@ -1324,14 +1363,99 @@
             try {
                 const raw = localStorage.getItem(SETTINGS_KEY);
                 if (!raw) return defaultSettings();
-                return { ...defaultSettings(), ...JSON.parse(raw) };
+                const merged = { ...defaultSettings(), ...JSON.parse(raw) };
+                const migrated = migrateLegacyKey(merged);
+                if (migrated) {
+                    localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+                }
+                return merged;
             } catch {
                 return defaultSettings();
             }
         }
 
         function defaultSettings() {
-            return { provider: '', apiKey: '', model: '', llmParams: {} };
+            return {
+                provider: '',
+                // Keys are stored per-provider so switching DeepSeek → Groq
+                // doesn't wipe the previously saved key.
+                apiKeys: {},
+                model: '',
+                llmParams: {},
+                retrievalStrategy: '',
+                rerank: false,
+                memoryStrategy: 'none',
+            };
+        }
+
+        // ----- One-time migration: collapse old flat apiKey into apiKeys map.
+        // Old shape: { provider: 'groq', apiKey: 'gsk_...' }
+        // New shape: { provider: 'groq', apiKeys: { groq: 'gsk_...' } }
+        // Older settings saved before this branch would otherwise lose the key
+        // on first load — migrate silently and persist.
+        function migrateLegacyKey(s) {
+            if (typeof s.apiKey === 'string' && s.apiKey && s.provider) {
+                s.apiKeys = s.apiKeys || {};
+                if (!s.apiKeys[s.provider]) {
+                    s.apiKeys[s.provider] = s.apiKey;
+                }
+                delete s.apiKey;
+                return true;
+            }
+            if (!s.apiKeys) {
+                s.apiKeys = {};
+            }
+            return false;
+        }
+
+        function currentApiKey() {
+            if (!userSettings.provider) return '';
+            return (userSettings.apiKeys && userSettings.apiKeys[userSettings.provider]) || '';
+        }
+
+        function setCurrentApiKey(value) {
+            if (!userSettings.provider) return;
+            userSettings.apiKeys = userSettings.apiKeys || {};
+            if (value) {
+                userSettings.apiKeys[userSettings.provider] = value;
+            } else {
+                delete userSettings.apiKeys[userSettings.provider];
+            }
+        }
+
+        // Conversation history — only the data the server needs to apply the
+        // selected memory strategy. Kept in localStorage so it survives reloads,
+        // cleared by the "clear history" button or when the user picks "none".
+        const HISTORY_KEY = 'ragart-history';
+        let conversationHistory = loadHistory();
+
+        function loadHistory() {
+            try {
+                const raw = localStorage.getItem(HISTORY_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch {
+                return [];
+            }
+        }
+
+        function saveHistory() {
+            // Cap at 200 turns so localStorage stays reasonable
+            if (conversationHistory.length > 200) {
+                conversationHistory = conversationHistory.slice(-200);
+            }
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(conversationHistory));
+            updateHistoryCount();
+        }
+
+        function updateHistoryCount() {
+            const el = document.getElementById('historyCount');
+            if (el) el.textContent = conversationHistory.length;
+        }
+
+        function clearHistory() {
+            conversationHistory = [];
+            localStorage.removeItem(HISTORY_KEY);
+            updateHistoryCount();
         }
 
         function saveSettings() {
@@ -1350,23 +1474,45 @@
                 return;
             }
             const providerSpec = settingsSchema?.providers.find(p => p.id === userSettings.provider);
-            if (providerSpec?.needs_key && !userSettings.apiKey) {
+            const haveKey = !!currentApiKey();
+            if (providerSpec?.needs_key && !haveKey) {
                 el.textContent = 'Key eksik';
                 el.className = 'key-status unset';
             } else {
                 el.textContent = userSettings.provider;
                 el.className = 'key-status set';
             }
+            // Also update the savedKeys summary if rendered
+            const summary = document.getElementById('savedKeysSummary');
+            if (summary && userSettings.apiKeys) {
+                const saved = Object.keys(userSettings.apiKeys).filter(k => userSettings.apiKeys[k]);
+                summary.textContent = saved.length
+                    ? `Kayıtlı key'ler: ${saved.join(', ')}`
+                    : 'Henüz kayıtlı key yok';
+            }
         }
 
         function buildAuthHeaders() {
             const h = {};
             if (userSettings.provider) h['X-Provider'] = userSettings.provider;
-            if (userSettings.apiKey) h['X-API-Key'] = userSettings.apiKey;
+            const key = currentApiKey();
+            if (key) h['X-API-Key'] = key;
             if (userSettings.model) h['X-Model'] = userSettings.model;
             const params = userSettings.llmParams || {};
             if (Object.keys(params).length > 0) {
                 h['X-LLM-Params'] = JSON.stringify(params);
+            }
+            if (userSettings.retrievalStrategy && userSettings.retrievalStrategy !== 'auto') {
+                h['X-Retrieval-Strategy'] = userSettings.retrievalStrategy;
+            }
+            if (userSettings.rerank) {
+                h['X-Rerank'] = 'true';
+            }
+            if (userSettings.memoryStrategy && userSettings.memoryStrategy !== 'none') {
+                h['X-Memory-Strategy'] = userSettings.memoryStrategy;
+                if (conversationHistory.length > 0) {
+                    h['X-Conversation-History'] = JSON.stringify(conversationHistory);
+                }
             }
             return h;
         }
@@ -1396,6 +1542,58 @@
                 renderProviderControls();
                 updateKeyStatus();
             });
+
+            // Retrieval strategy dropdown
+            const rsel = document.getElementById('retrievalSelect');
+            const rhint = document.getElementById('retrievalHint');
+            const strategies = settingsSchema.retrieval_strategies || [];
+            rsel.innerHTML = strategies
+                .map(s => `<option value="${s.id}">${s.label}</option>`)
+                .join('');
+            rsel.value = userSettings.retrievalStrategy || 'auto';
+            const updateRetrievalHint = () => {
+                const s = strategies.find(x => x.id === rsel.value);
+                rhint.textContent = s ? s.desc : '';
+            };
+            updateRetrievalHint();
+            rsel.addEventListener('change', () => {
+                userSettings.retrievalStrategy = rsel.value;
+                updateRetrievalHint();
+            });
+
+            // Reranker toggle
+            const rrToggle = document.getElementById('rerankToggle');
+            rrToggle.checked = !!userSettings.rerank;
+            rrToggle.addEventListener('change', () => {
+                userSettings.rerank = rrToggle.checked;
+            });
+
+            // Memory strategy
+            const msel = document.getElementById('memorySelect');
+            const mhint = document.getElementById('memoryHint');
+            const memStrategies = settingsSchema.memory_strategies || [];
+            msel.innerHTML = memStrategies
+                .map(s => `<option value="${s.id}">${s.label}</option>`)
+                .join('');
+            msel.value = userSettings.memoryStrategy || 'none';
+            const updateMemoryHint = () => {
+                const s = memStrategies.find(x => x.id === msel.value);
+                mhint.textContent = s ? s.desc : '';
+            };
+            updateMemoryHint();
+            msel.addEventListener('change', () => {
+                userSettings.memoryStrategy = msel.value;
+                updateMemoryHint();
+            });
+
+            // Clear history button
+            const clearBtn = document.getElementById('clearHistoryBtn');
+            clearBtn.addEventListener('click', () => {
+                if (!confirm('Tüm sohbet geçmişi silinsin mi?')) return;
+                clearHistory();
+                showToast('Sohbet geçmişi temizlendi');
+            });
+            updateHistoryCount();
         }
 
         function renderProviderControls() {
@@ -1418,7 +1616,7 @@
 
             // API key group: only for providers that need a key
             apiKeyGroup.style.display = spec.needs_key ? 'block' : 'none';
-            apiKeyInput.value = userSettings.apiKey || '';
+            apiKeyInput.value = currentApiKey();
 
             // Model placeholder
             modelInput.value = userSettings.model || '';
@@ -1475,7 +1673,9 @@
         });
 
         document.getElementById('settingsSave').addEventListener('click', () => {
-            userSettings.apiKey = document.getElementById('apiKeyInput').value.trim();
+            // Save the key under the currently selected provider so it
+            // survives provider switches.
+            setCurrentApiKey(document.getElementById('apiKeyInput').value.trim());
             userSettings.model = document.getElementById('modelInput').value.trim();
             saveSettings();
             settingsModal.classList.remove('open');
@@ -1483,7 +1683,7 @@
         });
 
         document.getElementById('settingsReset').addEventListener('click', () => {
-            if (!confirm('Tüm ayarları sıfırla?')) return;
+            if (!confirm('Tüm ayarlar ve tüm kayıtlı API key\'ler silinsin mi?')) return;
             userSettings = defaultSettings();
             localStorage.removeItem(SETTINGS_KEY);
             buildSettingsUI();
@@ -1561,10 +1761,17 @@
         });
         fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
+        const SUPPORTED_EXTS = ['.json', '.pdf', '.docx', '.md', '.markdown', '.txt'];
+
+        function isSupportedFile(name) {
+            const lower = name.toLowerCase();
+            return SUPPORTED_EXTS.some(e => lower.endsWith(e));
+        }
+
         async function handleFiles(files) {
             for (const file of files) {
-                if (!file.name.toLowerCase().endsWith('.json')) {
-                    showToast(`${file.name}: yalnızca JSON desteklenir`, 'error');
+                if (!isSupportedFile(file.name)) {
+                    showToast(`${file.name}: desteklenmeyen format`, 'error');
                     continue;
                 }
 
@@ -1717,6 +1924,13 @@
                 if (result.success) {
                     answerContent.className = 'answer-content';
                     answerContent.innerHTML = escapeHtml(result.answer).replace(/\n/g, '<br>');
+
+                    // Persist this turn into the history so memory strategies
+                    // have something to work with next time. Only do this once
+                    // the answer was actually returned — failed calls don't pollute.
+                    conversationHistory.push({ role: 'user', content: question });
+                    conversationHistory.push({ role: 'assistant', content: result.answer });
+                    saveHistory();
 
                     if (result.sources && result.sources.length > 0) {
                         sourcesContent.className = '';

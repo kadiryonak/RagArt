@@ -15,6 +15,7 @@ from werkzeug.utils import secure_filename
 from src.rag_system import TurkishRAGSystem
 from src.document_loader import create_sample_data
 from src.llm_providers import LLMProviderFactory
+from src.memory import ConversationTurn
 from src.utils import get_logger, StatusEmoji, setup_logging
 from config.settings import settings
 from config.settings_schema import (
@@ -30,8 +31,10 @@ logger = get_logger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# File upload configuration
-ALLOWED_EXTENSIONS = {'json'}
+# File upload configuration — multi-format
+# Driven by the LoaderRegistry so adding a new loader auto-enables uploads.
+from src.loaders import get_default_registry as _get_registry
+ALLOWED_EXTENSIONS = {ext.lstrip(".") for ext in _get_registry().supported_extensions}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 
@@ -161,11 +164,18 @@ def ask_question():
 
         logger.info(f"{StatusEmoji.SEARCH} Question received: {question}")
 
+        history = [ConversationTurn.from_dict(t) for t in req_settings.history]
+
         result = rag_system.ask(
             question,
             k=settings.TOP_K_DOCUMENTS,
             llm_provider=llm_override,
             llm_params=req_settings.llm_params.to_dict(),
+            retrieval_strategy=req_settings.retrieval_strategy,
+            rerank=req_settings.rerank,
+            rerank_fetch_k=req_settings.rerank_fetch_k,
+            history=history,
+            memory_strategy=req_settings.memory_strategy,
         )
         
         # Check for errors
@@ -303,43 +313,65 @@ def upload_file():
         return jsonify({"error": "No file selected"}), 400
     
     if not allowed_file(file.filename):
-        return jsonify({"error": "Only JSON files are allowed"}), 400
+        return jsonify({
+            "error": f"Unsupported file type. Allowed: {sorted(ALLOWED_EXTENSIONS)}"
+        }), 400
     
     filepath = None
     try:
-        # Secure the filename
         filename = secure_filename(file.filename)
-
-        # Ensure data folder exists
         os.makedirs(settings.DATA_FOLDER, exist_ok=True)
-
-        # Save the file
         filepath = os.path.join(settings.DATA_FOLDER, filename)
         file.save(filepath)
 
-        # Validate JSON content
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        # Format-specific validation: try to load with the matching loader.
+        # If parsing fails, delete the file and report the error — the user
+        # shouldn't end up with a corrupted file in their knowledge base.
+        from pathlib import Path
+        from src.loaders import get_default_registry
+        registry = get_default_registry()
+        loader = registry.get_loader(Path(filepath))
+        if loader is None:
+            os.remove(filepath)
+            return jsonify({"error": "No loader registered for this extension"}), 400
 
-        # Count documents
-        doc_count = len(data) if isinstance(data, list) else 1
+        try:
+            docs = loader.load(Path(filepath))
+        except Exception as e:
+            os.remove(filepath)
+            return jsonify({
+                "error": f"Could not parse {filename}: {type(e).__name__}: {e}"
+            }), 400
 
-        logger.info(f"{StatusEmoji.SUCCESS} File uploaded: {filename} ({doc_count} documents)")
+        if not docs:
+            # Empty extract — still keep the file but warn (e.g. scanned PDF)
+            logger.warning(
+                f"{StatusEmoji.WARNING} {filename} produced 0 documents "
+                "(empty or unreadable)"
+            )
+
+        logger.info(
+            f"{StatusEmoji.SUCCESS} File uploaded: {filename} "
+            f"(format={loader.name}, {len(docs)} documents)"
+        )
 
         return jsonify({
             "success": True,
             "filename": filename,
-            "document_count": doc_count,
-            "message": f"File '{filename}' uploaded successfully. Use /reindex to update the knowledge base."
+            "format": loader.name,
+            "document_count": len(docs),
+            "message": (
+                f"File '{filename}' uploaded successfully. "
+                "Use /reindex to update the knowledge base."
+            ),
         })
 
-    except json.JSONDecodeError:
-        # Remove invalid file
-        if filepath and os.path.exists(filepath):
-            os.remove(filepath)
-        return jsonify({"error": "Invalid JSON file format"}), 400
-
     except Exception as e:
+        if filepath and os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except Exception:
+                pass
         logger.error(f"{StatusEmoji.ERROR} Upload error: {e}")
         return jsonify({"error": f"Upload failed: {str(e)}"}), 500
 
@@ -407,37 +439,23 @@ def reindex_documents():
 
 @app.route("/list-files")
 def list_files():
-    """List all files in the knowledge base."""
+    """List all supported files in the knowledge base."""
     try:
         if not os.path.exists(settings.DATA_FOLDER):
             return jsonify({"files": [], "total": 0})
-        
-        files = []
-        for filename in os.listdir(settings.DATA_FOLDER):
-            if filename.endswith(".json"):
-                filepath = os.path.join(settings.DATA_FOLDER, filename)
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    doc_count = len(data) if isinstance(data, list) else 1
-                    size_kb = round(os.path.getsize(filepath) / 1024, 2)
-                    
-                    files.append({
-                        "filename": filename,
-                        "document_count": doc_count,
-                        "size_kb": size_kb
-                    })
-                except Exception:
-                    files.append({
-                        "filename": filename,
-                        "error": "Could not read file"
-                    })
-        
+
+        # Delegate to the document loader's get_file_info — it already
+        # walks every supported extension and is unit tested.
+        from src.document_loader import JSONDocumentLoader
+        loader = JSONDocumentLoader(settings.DATA_FOLDER)
+        files = loader.get_file_info()
+
         return jsonify({
             "files": files,
-            "total": len(files)
+            "total": len(files),
+            "supported_extensions": sorted(ALLOWED_EXTENSIONS),
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

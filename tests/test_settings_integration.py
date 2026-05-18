@@ -20,11 +20,18 @@ def client(monkeypatch):
 
     captured: dict = {}
 
-    def stub_ask(question, *, k=5, llm_provider=None, llm_params=None):
+    def stub_ask(question, *, k=5, llm_provider=None, llm_params=None,
+                 retrieval_strategy=None, rerank=False, rerank_fetch_k=20,
+                 history=None, memory_strategy=None):
         captured["question"] = question
         captured["k"] = k
         captured["llm_provider"] = llm_provider
         captured["llm_params"] = llm_params
+        captured["retrieval_strategy"] = retrieval_strategy
+        captured["rerank"] = rerank
+        captured["rerank_fetch_k"] = rerank_fetch_k
+        captured["history"] = history or []
+        captured["memory_strategy"] = memory_strategy
         return {
             "question": question,
             "answer": "stub cevap",
@@ -165,6 +172,104 @@ class TestAskWithBYOK:
         assert r.status_code == 200
         from src.llm_providers import LocalProvider
         assert isinstance(captured["llm_provider"], LocalProvider)
+
+    def test_retrieval_strategy_threaded_through(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "veri yapıları nedir?"},
+            headers={"X-Retrieval-Strategy": "hybrid"},
+        )
+        assert r.status_code == 200
+        assert captured["retrieval_strategy"] == "hybrid"
+
+    def test_unknown_retrieval_strategy_falls_back_to_none(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Retrieval-Strategy": "magic-strategy-9000"},
+        )
+        assert r.status_code == 200
+        assert captured["retrieval_strategy"] is None
+
+    def test_rerank_header_enables_reranker(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Rerank": "true"},
+        )
+        assert r.status_code == 200
+        assert captured["rerank"] is True
+
+    def test_rerank_header_false_keeps_off(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Rerank": "0"},
+        )
+        assert r.status_code == 200
+        assert captured["rerank"] is False
+
+    def test_rerank_fetch_k_threaded(self, client):
+        c, captured, _ = client
+        c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Rerank": "true", "X-Rerank-Fetch-K": "50"},
+        )
+        assert captured["rerank_fetch_k"] == 50
+
+    def test_rerank_fetch_k_clamped(self, client):
+        c, captured, _ = client
+        c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Rerank": "true", "X-Rerank-Fetch-K": "9999"},
+        )
+        assert captured["rerank_fetch_k"] == 200  # max clamp
+
+    def test_memory_strategy_threaded(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "ondan bahsetmiştik"},
+            headers={
+                "X-Memory-Strategy": "sliding_window",
+                "X-Conversation-History": json.dumps([
+                    {"role": "user", "content": "algoritma nedir"},
+                    {"role": "assistant", "content": "algoritma adım adım..."},
+                ]),
+            },
+        )
+        assert r.status_code == 200
+        assert captured["memory_strategy"] == "sliding_window"
+        assert len(captured["history"]) == 2
+        from src.memory import ConversationTurn
+        assert isinstance(captured["history"][0], ConversationTurn)
+        assert captured["history"][0].role == "user"
+
+    def test_unknown_memory_strategy_falls_back(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Memory-Strategy": "telepathic-memory"},
+        )
+        assert r.status_code == 200
+        assert captured["memory_strategy"] is None
+
+    def test_invalid_history_json_ignored(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Conversation-History": "not json"},
+        )
+        assert r.status_code == 200
+        assert captured["history"] == []
 
     def test_ollama_no_key_ok(self, client):
         c, captured, _ = client

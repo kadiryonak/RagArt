@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.document_loader import JSONDocumentLoader, create_sample_data
+from src.loaders.json_loader import _extract_text as _extract_text_helper
 
 
 class TestJSONDocumentLoader:
@@ -171,7 +172,7 @@ class TestTextExtraction:
             "content": "Test content here"
         }
         
-        text = loader._extract_text(json_obj)
+        text = _extract_text_helper(json_obj)
         
         assert "title: Test Title" in text
         assert "content: Test content here" in text
@@ -184,7 +185,7 @@ class TestTextExtraction:
             }
         }
         
-        text = loader._extract_text(json_obj)
+        text = _extract_text_helper(json_obj)
         
         assert "nested_key: Nested value" in text
     
@@ -194,7 +195,7 @@ class TestTextExtraction:
             "items": ["Item 1", "Item 2", "Item 3"]
         }
         
-        text = loader._extract_text(json_obj)
+        text = _extract_text_helper(json_obj)
         
         assert "Item 1" in text or "Item 2" in text
     
@@ -206,7 +207,7 @@ class TestTextExtraction:
             "short": "ab"  # Too short
         }
         
-        text = loader._extract_text(json_obj)
+        text = _extract_text_helper(json_obj)
         
         assert "valid: Valid content" in text
         assert "empty" not in text or "empty:" not in text

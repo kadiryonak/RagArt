@@ -140,6 +140,11 @@ class RequestSettings:
     api_key: Optional[str] = None
     model: Optional[str] = None
     llm_params: LLMParams = field(default_factory=LLMParams)
+    retrieval_strategy: Optional[str] = None  # 'dense' | 'sparse' | 'hybrid' | None
+    rerank: bool = False                       # cross-encoder rerank toggle
+    rerank_fetch_k: int = 20                   # aday sayısı
+    memory_strategy: Optional[str] = None      # 'none' | 'sliding_window' | 'summary_buffer' | 'vector'
+    history: list = field(default_factory=list)  # list[dict] {role, content}
 
 
 def parse_request_settings(headers) -> RequestSettings:
@@ -154,11 +159,47 @@ def parse_request_settings(headers) -> RequestSettings:
     provider = (headers.get("X-Provider") or "").strip().lower() or None
     if provider == "":
         provider = None
+
+    strategy = (headers.get("X-Retrieval-Strategy") or "").strip().lower() or None
+    if strategy and strategy not in ("dense", "sparse", "hybrid"):
+        strategy = None  # bilinmeyen değer → sessizce default
+
+    rerank_raw = (headers.get("X-Rerank") or "").strip().lower()
+    rerank = rerank_raw in ("1", "true", "yes", "on")
+
+    rerank_fetch_k = 20
+    try:
+        rfk = headers.get("X-Rerank-Fetch-K")
+        if rfk:
+            rerank_fetch_k = max(1, min(200, int(rfk)))
+    except (ValueError, TypeError):
+        pass
+
+    mem = (headers.get("X-Memory-Strategy") or "").strip().lower() or None
+    if mem and mem not in ("none", "sliding_window", "summary_buffer", "vector"):
+        mem = None
+
+    history: list = []
+    hist_raw = headers.get("X-Conversation-History")
+    if hist_raw:
+        try:
+            data = json.loads(hist_raw)
+            if isinstance(data, list):
+                # Cap to a sensible max so a huge header can't OOM the server
+                history = data[-200:]
+        except (ValueError, TypeError):
+            history = []
+
     return RequestSettings(
         provider=provider,
         api_key=(headers.get("X-API-Key") or "").strip() or None,
         model=(headers.get("X-Model") or "").strip() or None,
         llm_params=LLMParams.from_json_string(headers.get("X-LLM-Params")),
+        retrieval_strategy=strategy,
+        rerank=rerank,
+        rerank_fetch_k=rerank_fetch_k,
+        memory_strategy=mem,
+        history=history,
     )
 
 
@@ -173,6 +214,36 @@ def get_settings_schema() -> Dict[str, Any]:
                 "params": PROVIDER_PARAMS[pid],
             }
             for pid in ("deepseek", "openai", "groq", "ollama", "huggingface", "local")
+        ],
+        "retrieval_strategies": [
+            {"id": "auto",   "label": "Otomatik (önerilen)",
+             "desc": "Hybrid varsa hybrid, yoksa dense."},
+            {"id": "dense",  "label": "Dense (embedding)",
+             "desc": "Anlamsal arama. Paraphrase'lere güçlü, exact match'lere zayıf."},
+            {"id": "sparse", "label": "Sparse (BM25)",
+             "desc": "Term-bazlı. Özel isim/kısaltma/kod için güçlü."},
+            {"id": "hybrid", "label": "Hybrid (RRF)",
+             "desc": "Dense + BM25 birleşimi. Production standardı."},
+        ],
+        "rerank": {
+            "available": True,
+            "desc": "Cross-encoder ile son aşama yeniden sıralama. "
+                    "İlk çağrıda ~400MB model indirir, sonra cache'lenir. "
+                    "Her sorguya ~500-1000ms ekler ama relevance ciddi artar.",
+            "default_fetch_k": 20,
+        },
+        "memory_strategies": [
+            {"id": "none",          "label": "Hafıza yok",
+             "desc": "Her soru izole. Tek-turn senaryolar için ideal."},
+            {"id": "sliding_window", "label": "Kayar pencere (son N turn)",
+             "desc": "Son 5 sohbet adımı ham olarak prompt'a eklenir. "
+                     "Sıfır maliyet, deterministik."},
+            {"id": "summary_buffer", "label": "Özetli buffer",
+             "desc": "Eski turn'ler LLM ile özetlenir, son 4'ü ham tutulur. "
+                     "Uzun sohbetlerde token tasarrufu."},
+            {"id": "vector",         "label": "Semantik retrieval",
+             "desc": "Soru ile embedding olarak en alakalı geçmiş turn'leri "
+                     "çeker. Çok uzun sohbet için."},
         ],
         "param_descriptions_tr": {
             "temperature": "Yaratıcılık. Düşük → tutarlı/kuralcı, yüksek → çeşitli/yaratıcı.",

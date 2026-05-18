@@ -175,3 +175,107 @@ class TestSchemaShape:
         assert "temperature" in groq_params
         assert "top_p" in groq_params
         assert "max_tokens" in groq_params
+
+    def test_schema_has_retrieval_strategies(self):
+        schema = get_settings_schema()
+        assert "retrieval_strategies" in schema
+        ids = {s["id"] for s in schema["retrieval_strategies"]}
+        assert {"auto", "dense", "sparse", "hybrid"} == ids
+
+
+class TestRetrievalParsing:
+    def test_valid_strategy(self):
+        s = parse_request_settings(_MockHeaders(**{"X-Retrieval-Strategy": "hybrid"}))
+        assert s.retrieval_strategy == "hybrid"
+
+    def test_case_insensitive(self):
+        s = parse_request_settings(_MockHeaders(**{"X-Retrieval-Strategy": "  HYBRID  "}))
+        assert s.retrieval_strategy == "hybrid"
+
+    def test_unknown_silently_dropped(self):
+        s = parse_request_settings(_MockHeaders(**{"X-Retrieval-Strategy": "magic"}))
+        assert s.retrieval_strategy is None
+
+    def test_no_header_means_none(self):
+        s = parse_request_settings(_MockHeaders())
+        assert s.retrieval_strategy is None
+
+
+class TestRerankParsing:
+    @pytest.mark.parametrize("val", ["1", "true", "True", "yes", "ON"])
+    def test_truthy_values(self, val):
+        s = parse_request_settings(_MockHeaders(**{"X-Rerank": val}))
+        assert s.rerank is True
+
+    @pytest.mark.parametrize("val", ["0", "false", "no", "off", "anything"])
+    def test_falsy_values(self, val):
+        s = parse_request_settings(_MockHeaders(**{"X-Rerank": val}))
+        assert s.rerank is False
+
+    def test_default_off(self):
+        s = parse_request_settings(_MockHeaders())
+        assert s.rerank is False
+        assert s.rerank_fetch_k == 20
+
+    def test_fetch_k_parsed(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Rerank": "true", "X-Rerank-Fetch-K": "40"
+        }))
+        assert s.rerank_fetch_k == 40
+
+    def test_fetch_k_clamped(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Rerank-Fetch-K": "10000",
+        }))
+        assert s.rerank_fetch_k == 200  # capped
+
+    def test_fetch_k_invalid_falls_back(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Rerank-Fetch-K": "not-a-number",
+        }))
+        assert s.rerank_fetch_k == 20  # default
+
+
+class TestMemoryParsing:
+    @pytest.mark.parametrize("strategy", ["none", "sliding_window", "summary_buffer", "vector"])
+    def test_valid_strategies(self, strategy):
+        s = parse_request_settings(_MockHeaders(**{"X-Memory-Strategy": strategy}))
+        assert s.memory_strategy == strategy
+
+    def test_unknown_strategy_falls_back(self):
+        s = parse_request_settings(_MockHeaders(**{"X-Memory-Strategy": "mindreader"}))
+        assert s.memory_strategy is None
+
+    def test_history_parsed(self):
+        import json
+        h = [
+            {"role": "user", "content": "merhaba"},
+            {"role": "assistant", "content": "selam"},
+        ]
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": json.dumps(h),
+        }))
+        assert s.history == h
+
+    def test_invalid_history_json(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": "garbage",
+        }))
+        assert s.history == []
+
+    def test_history_cap_200(self):
+        import json
+        h = [{"role": "user", "content": f"q{i}"} for i in range(300)]
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": json.dumps(h),
+        }))
+        assert len(s.history) == 200
+        # Son 200 alındı
+        assert s.history[0]["content"] == "q100"
+
+    def test_schema_has_memory_strategies(self):
+        from config.settings_schema import get_settings_schema
+        schema = get_settings_schema()
+        assert "memory_strategies" in schema
+        ids = {m["id"] for m in schema["memory_strategies"]}
+        assert {"none", "sliding_window", "summary_buffer", "vector"} == ids
