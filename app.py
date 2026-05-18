@@ -15,6 +15,7 @@ from werkzeug.utils import secure_filename
 from src.rag_system import TurkishRAGSystem
 from src.document_loader import create_sample_data
 from src.llm_providers import LLMProviderFactory
+from src.memory import ConversationTurn
 from src.utils import get_logger, StatusEmoji, setup_logging
 from config.settings import settings
 from config.settings_schema import (
@@ -161,6 +162,8 @@ def ask_question():
 
         logger.info(f"{StatusEmoji.SEARCH} Question received: {question}")
 
+        history = [ConversationTurn.from_dict(t) for t in req_settings.history]
+
         result = rag_system.ask(
             question,
             k=settings.TOP_K_DOCUMENTS,
@@ -169,6 +172,8 @@ def ask_question():
             retrieval_strategy=req_settings.retrieval_strategy,
             rerank=req_settings.rerank,
             rerank_fetch_k=req_settings.rerank_fetch_k,
+            history=history,
+            memory_strategy=req_settings.memory_strategy,
         )
         
         # Check for errors

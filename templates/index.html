@@ -1296,6 +1296,24 @@
                 </div>
 
                 <div class="form-section">
+                    <div class="form-section-title">Sohbet Hafızası</div>
+                    <div class="form-group">
+                        <label class="form-label" for="memorySelect">Strateji</label>
+                        <select id="memorySelect" class="form-select"></select>
+                        <div class="form-hint" id="memoryHint"></div>
+                    </div>
+                    <div class="form-group">
+                        <button id="clearHistoryBtn" class="btn btn-secondary"
+                                style="width: 100%; margin-top: 0;">
+                            Sohbet geçmişini temizle
+                        </button>
+                        <div class="form-hint" id="historyStatus">
+                            Geçmiş: <span id="historyCount">0</span> mesaj
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
                     <div class="form-section-title">LLM Parametreleri</div>
                     <div id="llmParamsContainer"></div>
                 </div>
@@ -1356,7 +1374,43 @@
                 llmParams: {},
                 retrievalStrategy: '',
                 rerank: false,
+                memoryStrategy: 'none',
             };
+        }
+
+        // Conversation history — only the data the server needs to apply the
+        // selected memory strategy. Kept in localStorage so it survives reloads,
+        // cleared by the "clear history" button or when the user picks "none".
+        const HISTORY_KEY = 'ragart-history';
+        let conversationHistory = loadHistory();
+
+        function loadHistory() {
+            try {
+                const raw = localStorage.getItem(HISTORY_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch {
+                return [];
+            }
+        }
+
+        function saveHistory() {
+            // Cap at 200 turns so localStorage stays reasonable
+            if (conversationHistory.length > 200) {
+                conversationHistory = conversationHistory.slice(-200);
+            }
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(conversationHistory));
+            updateHistoryCount();
+        }
+
+        function updateHistoryCount() {
+            const el = document.getElementById('historyCount');
+            if (el) el.textContent = conversationHistory.length;
+        }
+
+        function clearHistory() {
+            conversationHistory = [];
+            localStorage.removeItem(HISTORY_KEY);
+            updateHistoryCount();
         }
 
         function saveSettings() {
@@ -1398,6 +1452,12 @@
             }
             if (userSettings.rerank) {
                 h['X-Rerank'] = 'true';
+            }
+            if (userSettings.memoryStrategy && userSettings.memoryStrategy !== 'none') {
+                h['X-Memory-Strategy'] = userSettings.memoryStrategy;
+                if (conversationHistory.length > 0) {
+                    h['X-Conversation-History'] = JSON.stringify(conversationHistory);
+                }
             }
             return h;
         }
@@ -1452,6 +1512,33 @@
             rrToggle.addEventListener('change', () => {
                 userSettings.rerank = rrToggle.checked;
             });
+
+            // Memory strategy
+            const msel = document.getElementById('memorySelect');
+            const mhint = document.getElementById('memoryHint');
+            const memStrategies = settingsSchema.memory_strategies || [];
+            msel.innerHTML = memStrategies
+                .map(s => `<option value="${s.id}">${s.label}</option>`)
+                .join('');
+            msel.value = userSettings.memoryStrategy || 'none';
+            const updateMemoryHint = () => {
+                const s = memStrategies.find(x => x.id === msel.value);
+                mhint.textContent = s ? s.desc : '';
+            };
+            updateMemoryHint();
+            msel.addEventListener('change', () => {
+                userSettings.memoryStrategy = msel.value;
+                updateMemoryHint();
+            });
+
+            // Clear history button
+            const clearBtn = document.getElementById('clearHistoryBtn');
+            clearBtn.addEventListener('click', () => {
+                if (!confirm('Tüm sohbet geçmişi silinsin mi?')) return;
+                clearHistory();
+                showToast('Sohbet geçmişi temizlendi');
+            });
+            updateHistoryCount();
         }
 
         function renderProviderControls() {
@@ -1773,6 +1860,13 @@
                 if (result.success) {
                     answerContent.className = 'answer-content';
                     answerContent.innerHTML = escapeHtml(result.answer).replace(/\n/g, '<br>');
+
+                    // Persist this turn into the history so memory strategies
+                    // have something to work with next time. Only do this once
+                    // the answer was actually returned — failed calls don't pollute.
+                    conversationHistory.push({ role: 'user', content: question });
+                    conversationHistory.push({ role: 'assistant', content: result.answer });
+                    saveHistory();
 
                     if (result.sources && result.sources.length > 0) {
                         sourcesContent.className = '';

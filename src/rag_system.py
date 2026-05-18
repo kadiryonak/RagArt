@@ -26,6 +26,14 @@ from src.retrievers import (
     RerankedRetriever,
     RetrievedDoc,
 )
+from src.memory import (
+    BaseMemory,
+    ConversationTurn,
+    NoMemory,
+    SlidingWindowMemory,
+    SummaryBufferMemory,
+    VectorRetrievalMemory,
+)
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
 
 logger = get_logger(__name__)
@@ -40,6 +48,26 @@ KURALLAR:
 3. Kısa ve öz yanıt ver
 4. Bağlamdan doğrudan alıntı yapabilirsin
 5. Türkçe yanıt ver
+
+BAĞLAM:
+{context}
+
+SORU: {question}
+
+YANITIN:"""
+
+
+TURKISH_SYSTEM_PROMPT_WITH_MEMORY = """Sen Türkçe konuşan bir yapay zeka asistanısın. Görevin verilen BAĞLAM bilgilerini ve önceki KONUŞMA geçmişini kullanarak kullanıcının sorusunu yanıtla.
+
+KURALLAR:
+1. Sadece verilen BAĞLAM bilgilerini kullan
+2. KONUŞMA geçmişindeki referansları (örn. "o", "bu konuda") yorumlamak için kullan
+3. Bağlamda bilgi yoksa "Bu konuda verilen bilgilerde yeterli detay bulunmuyor" de
+4. Kısa ve öz yanıt ver
+5. Türkçe yanıt ver
+
+ÖNCEKİ KONUŞMA:
+{memory_context}
 
 BAĞLAM:
 {context}
@@ -349,6 +377,24 @@ class TurkishRAGSystem:
         
         return total_score / len(documents)
     
+    def _build_memory(
+        self,
+        strategy: Optional[str],
+        llm_for_summary: Optional[BaseLLMProvider] = None,
+    ) -> BaseMemory:
+        """Strateji adından memory instance üret."""
+        if strategy in (None, "", "none"):
+            return NoMemory()
+        if strategy == "sliding_window":
+            return SlidingWindowMemory(window_size=5)
+        if strategy == "summary_buffer":
+            return SummaryBufferMemory(llm=llm_for_summary or self.llm_provider)
+        if strategy == "vector":
+            return VectorRetrievalMemory(
+                embed_fn=self.embedding_manager.embed_query, top_k=3
+            )
+        return NoMemory()
+
     def ask(
         self,
         question: str,
@@ -359,6 +405,8 @@ class TurkishRAGSystem:
         retrieval_strategy: Optional[str] = None,
         rerank: bool = False,
         rerank_fetch_k: int = 20,
+        history: Optional[List[ConversationTurn]] = None,
+        memory_strategy: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
@@ -415,12 +463,23 @@ class TurkishRAGSystem:
                 context_parts.append(f"[Source {i} - {source}]\n{doc.page_content}")
             
             context = "\n\n".join(context_parts)
-            
-            # Create prompt
-            full_prompt = self.system_prompt.format(
-                context=context,
-                question=question
-            )
+
+            # Apply memory strategy (returns "" if NoMemory or empty history)
+            memory = self._build_memory(memory_strategy, llm_for_summary=llm_provider)
+            memory_context = memory.apply(history or [], question).strip()
+
+            # Pick the right prompt template based on whether we have memory
+            if memory_context:
+                full_prompt = TURKISH_SYSTEM_PROMPT_WITH_MEMORY.format(
+                    memory_context=memory_context,
+                    context=context,
+                    question=question,
+                )
+            else:
+                full_prompt = self.system_prompt.format(
+                    context=context,
+                    question=question,
+                )
             
             provider = llm_provider or self.llm_provider
             provider_label = getattr(provider, "model", self.model_type)
@@ -445,6 +504,8 @@ class TurkishRAGSystem:
                 "source": "rag_system",
                 "relevance_score": relevance_score,
                 "retrieval_strategy": strategy_label,
+                "memory_strategy": memory_strategy or "none",
+                "memory_used": bool(memory_context),
             }
             
         except Exception as e:

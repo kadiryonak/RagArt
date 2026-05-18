@@ -143,6 +143,8 @@ class RequestSettings:
     retrieval_strategy: Optional[str] = None  # 'dense' | 'sparse' | 'hybrid' | None
     rerank: bool = False                       # cross-encoder rerank toggle
     rerank_fetch_k: int = 20                   # aday sayısı
+    memory_strategy: Optional[str] = None      # 'none' | 'sliding_window' | 'summary_buffer' | 'vector'
+    history: list = field(default_factory=list)  # list[dict] {role, content}
 
 
 def parse_request_settings(headers) -> RequestSettings:
@@ -173,6 +175,21 @@ def parse_request_settings(headers) -> RequestSettings:
     except (ValueError, TypeError):
         pass
 
+    mem = (headers.get("X-Memory-Strategy") or "").strip().lower() or None
+    if mem and mem not in ("none", "sliding_window", "summary_buffer", "vector"):
+        mem = None
+
+    history: list = []
+    hist_raw = headers.get("X-Conversation-History")
+    if hist_raw:
+        try:
+            data = json.loads(hist_raw)
+            if isinstance(data, list):
+                # Cap to a sensible max so a huge header can't OOM the server
+                history = data[-200:]
+        except (ValueError, TypeError):
+            history = []
+
     return RequestSettings(
         provider=provider,
         api_key=(headers.get("X-API-Key") or "").strip() or None,
@@ -181,6 +198,8 @@ def parse_request_settings(headers) -> RequestSettings:
         retrieval_strategy=strategy,
         rerank=rerank,
         rerank_fetch_k=rerank_fetch_k,
+        memory_strategy=mem,
+        history=history,
     )
 
 
@@ -213,6 +232,19 @@ def get_settings_schema() -> Dict[str, Any]:
                     "Her sorguya ~500-1000ms ekler ama relevance ciddi artar.",
             "default_fetch_k": 20,
         },
+        "memory_strategies": [
+            {"id": "none",          "label": "Hafıza yok",
+             "desc": "Her soru izole. Tek-turn senaryolar için ideal."},
+            {"id": "sliding_window", "label": "Kayar pencere (son N turn)",
+             "desc": "Son 5 sohbet adımı ham olarak prompt'a eklenir. "
+                     "Sıfır maliyet, deterministik."},
+            {"id": "summary_buffer", "label": "Özetli buffer",
+             "desc": "Eski turn'ler LLM ile özetlenir, son 4'ü ham tutulur. "
+                     "Uzun sohbetlerde token tasarrufu."},
+            {"id": "vector",         "label": "Semantik retrieval",
+             "desc": "Soru ile embedding olarak en alakalı geçmiş turn'leri "
+                     "çeker. Çok uzun sohbet için."},
+        ],
         "param_descriptions_tr": {
             "temperature": "Yaratıcılık. Düşük → tutarlı/kuralcı, yüksek → çeşitli/yaratıcı.",
             "top_p": "Nucleus sampling. 1.0 = tüm seçenekler, 0.5 = en olası %50.",

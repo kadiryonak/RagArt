@@ -234,3 +234,48 @@ class TestRerankParsing:
             "X-Rerank-Fetch-K": "not-a-number",
         }))
         assert s.rerank_fetch_k == 20  # default
+
+
+class TestMemoryParsing:
+    @pytest.mark.parametrize("strategy", ["none", "sliding_window", "summary_buffer", "vector"])
+    def test_valid_strategies(self, strategy):
+        s = parse_request_settings(_MockHeaders(**{"X-Memory-Strategy": strategy}))
+        assert s.memory_strategy == strategy
+
+    def test_unknown_strategy_falls_back(self):
+        s = parse_request_settings(_MockHeaders(**{"X-Memory-Strategy": "mindreader"}))
+        assert s.memory_strategy is None
+
+    def test_history_parsed(self):
+        import json
+        h = [
+            {"role": "user", "content": "merhaba"},
+            {"role": "assistant", "content": "selam"},
+        ]
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": json.dumps(h),
+        }))
+        assert s.history == h
+
+    def test_invalid_history_json(self):
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": "garbage",
+        }))
+        assert s.history == []
+
+    def test_history_cap_200(self):
+        import json
+        h = [{"role": "user", "content": f"q{i}"} for i in range(300)]
+        s = parse_request_settings(_MockHeaders(**{
+            "X-Conversation-History": json.dumps(h),
+        }))
+        assert len(s.history) == 200
+        # Son 200 alındı
+        assert s.history[0]["content"] == "q100"
+
+    def test_schema_has_memory_strategies(self):
+        from config.settings_schema import get_settings_schema
+        schema = get_settings_schema()
+        assert "memory_strategies" in schema
+        ids = {m["id"] for m in schema["memory_strategies"]}
+        assert {"none", "sliding_window", "summary_buffer", "vector"} == ids
