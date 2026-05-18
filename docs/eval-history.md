@@ -145,6 +145,68 @@ Groq free tier 12K TPM (token-per-minute). İlk çalıştırmada 3 hard soru 429
 
 ---
 
+## v2 — Hybrid retrieval + Groq (2026-05-18)
+
+**Branch:** `feat/hybrid-retrieval`
+**Komut:** `python scripts/run_eval.py --provider groq --retrieval hybrid --layers L1,L2,L3 --name baseline-v2-hybrid`
+**Değişen:** Sadece retrieval. LLM v1 ile aynı (Groq). Dense-only → **BM25 + Dense + RRF fusion**.
+
+### Özet
+
+| Katman | v0 | v1 | **v2** | Δ vs v1 |
+|---|---|---|---|---|
+| L1 (rules)   | 0.793 | 0.884 | **0.928** | +0.044 |
+| L2 (vector)  | 0.820 | 0.843 | **0.849** | +0.006 |
+| L3 (lexical) | 0.116 | 0.266 | **0.306** | **+0.040** |
+| **Overall**  | 0.5762 | 0.6645 | **0.6946** | **+0.0301** |
+| Pass         | 3/12 | 7/12 | **8/12**  | +1 |
+
+### Per-item delta (vs v1)
+
+| Item | v1 | v2 | Δ | Yorum |
+|---|---|---|---|---|
+| **medium-03-veri-yapilari** | 0.518 | **0.753** | **+0.235** | ⭐ BM25 "yapıları" exact-match → Veri_yapıları.json doğru kaynak |
+| **hard-03-multi-hop**       | 0.566 | **0.760** | **+0.194** | Daha iyi retrieval → daha iyi multi-source synthesis |
+| **easy-03-yapay-zeka**      | 0.580 | **0.732** | **+0.152** | BM25 anahtar kelimelerle daha doğru |
+| easy-02-python-tanim        | 0.722 | 0.652 | −0.070 | hybrid farklı chunk seçti |
+| **medium-04-derin-ogrenme** | 0.714 | **0.579** | **−0.135** | ⚠ regression — RRF farklı doc kombinasyonu, reranker düzeltir |
+| edge-01-out-of-domain       | 0.523 | 0.518 | −0.005 | hâlâ OOD handling zayıf |
+
+### Yorumlar
+
+**1. Hipotez kanıtlandı: BM25 medium-03 retrieval bias'i çözdü.**
+v1 yorumlarında: "medium-03-veri-yapilari hâlâ failing → BM25 bunu çözer" demiştik. **+0.235** geldi — embedding "veri yapıları" ile "veri bilimi"ni karıştırırken BM25 exact term match yaparak doğru dosyayı getirdi.
+
+**2. L1 (+0.044) — sürpriz kazanım.**
+Daha doğru context = LLM daha keyword-rich cevap üretiyor (golden keywords daha sık tutuyor).
+
+**3. L3 (+0.040) — beklenenden hafif.**
+RRF doğru chunk'ları sıralasa da, chunk-içi içerik referans cevaba kelime kelime tam uymuyor. Gelecek branch'lerde (reranker, context compression) L3 daha çok yükselir.
+
+**4. medium-04-derin-ogrenme −0.135 — RRF tipik trade-off.**
+v1'de dense Derin_öğrenme.json + Makine_öğrenmesi.json döndürürken, v2'de hybrid sadece Derin_öğrenme.json (BM25 "derin" term'inde dominant). Cevap kapsama düştü. **Reranker** (`bge-reranker-v2-m3`) cross-encoder ile bu tip çağrı seçimini iyileştirir.
+
+**5. edge case'ler iyileşmedi.**
+Hybrid retrieval, OOD detection sorununu çözmez — bu **query understanding** katmanının işi.
+
+### İyileştirme hedefleri (güncellenmiş)
+
+| Hedef | Beklenen | Niye? |
+|---|---|---|
+| `feat/reranker` | medium-04 +0.10, L2 pass rate +%10 | cross-encoder relevance, RRF tradeoff'larını yumuşatır |
+| `feat/query-understanding` | edge-01/02 +0.20, halüsinasyon ↓ | OOD detection, net red |
+| `feat/context-engineering` | L3 +0.05, lost-in-the-middle ↓ | compression + ordering |
+| `feat/memory` | Multi-turn senaryo desteği | Mevcut test set'ini etkilemez |
+
+### Teknik notlar
+
+- **BM25 implementation:** `rank_bm25.BM25Okapi`, in-memory, reindex sırasında split_documents'tan inşa edilir.
+- **Türkçe tokenization:** L3 evaluator'deki `tokenize` fonksiyonu kullanılır (hafif suffix stripping). Aynı tokenization eval ve retrieval'da → tutarlılık.
+- **RRF:** k_rrf=60 (Microsoft/Bing paper'daki default), oversample=4 (her retriever'dan 4×k çek, sonra füze et).
+- **Per-request override:** UI `X-Retrieval-Strategy` header'ı ile dense/sparse/hybrid arasında geçiş. Default: auto (hybrid varsa hybrid).
+
+---
+
 ## Şablon: yeni branch sonrası ekleme formatı
 
 ```markdown

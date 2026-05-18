@@ -1276,6 +1276,15 @@
                 </div>
 
                 <div class="form-section">
+                    <div class="form-section-title">Retrieval Stratejisi</div>
+                    <div class="form-group">
+                        <label class="form-label" for="retrievalSelect">Yöntem</label>
+                        <select id="retrievalSelect" class="form-select"></select>
+                        <div class="form-hint" id="retrievalHint"></div>
+                    </div>
+                </div>
+
+                <div class="form-section">
                     <div class="form-section-title">LLM Parametreleri</div>
                     <div id="llmParamsContainer"></div>
                 </div>
@@ -1331,7 +1340,7 @@
         }
 
         function defaultSettings() {
-            return { provider: '', apiKey: '', model: '', llmParams: {} };
+            return { provider: '', apiKey: '', model: '', llmParams: {}, retrievalStrategy: '' };
         }
 
         function saveSettings() {
@@ -1368,6 +1377,9 @@
             if (Object.keys(params).length > 0) {
                 h['X-LLM-Params'] = JSON.stringify(params);
             }
+            if (userSettings.retrievalStrategy && userSettings.retrievalStrategy !== 'auto') {
+                h['X-Retrieval-Strategy'] = userSettings.retrievalStrategy;
+            }
             return h;
         }
 
@@ -1395,6 +1407,24 @@
                 userSettings.llmParams = {}; // params provider'a özel
                 renderProviderControls();
                 updateKeyStatus();
+            });
+
+            // Retrieval strategy dropdown
+            const rsel = document.getElementById('retrievalSelect');
+            const rhint = document.getElementById('retrievalHint');
+            const strategies = settingsSchema.retrieval_strategies || [];
+            rsel.innerHTML = strategies
+                .map(s => `<option value="${s.id}">${s.label}</option>`)
+                .join('');
+            rsel.value = userSettings.retrievalStrategy || 'auto';
+            const updateRetrievalHint = () => {
+                const s = strategies.find(x => x.id === rsel.value);
+                rhint.textContent = s ? s.desc : '';
+            };
+            updateRetrievalHint();
+            rsel.addEventListener('change', () => {
+                userSettings.retrievalStrategy = rsel.value;
+                updateRetrievalHint();
             });
         }
 

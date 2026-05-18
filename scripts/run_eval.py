@@ -69,6 +69,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Model name override (e.g. llama-3.3-70b-versatile for groq).",
     )
+    p.add_argument(
+        "--retrieval",
+        default=None,
+        choices=["dense", "sparse", "hybrid"],
+        help="Retrieval strategy override (default: auto = hybrid if available).",
+    )
     return p.parse_args()
 
 
@@ -78,6 +84,7 @@ def build_rag_callable(
     provider_override: str | None = None,
     api_key_override: str | None = None,
     model_override: str | None = None,
+    retrieval_strategy: str | None = None,
 ):
     """Gerçek RAG sistemini veya mock'u döndür.
 
@@ -119,8 +126,15 @@ def build_rag_callable(
         print(f"[info] LLM override: {provider_override} "
               f"(model={getattr(llm_override, 'model', '?')})")
 
+    if retrieval_strategy:
+        print(f"[info] Retrieval strategy: {retrieval_strategy}")
+
     def real(question: str) -> RAGOutput:
-        result = rag.ask(question, llm_provider=llm_override)
+        result = rag.ask(
+            question,
+            llm_provider=llm_override,
+            retrieval_strategy=retrieval_strategy,
+        )
         return RAGOutput(
             answer=result.get("answer", ""),
             retrieved_sources=[
@@ -176,6 +190,7 @@ def main() -> int:
             provider_override=args.provider,
             api_key_override=args.api_key,
             model_override=args.model,
+            retrieval_strategy=args.retrieval,
         )
 
     evaluators = build_evaluators(layer_set, rag_obj=rag_obj, with_judge=args.with_judge)

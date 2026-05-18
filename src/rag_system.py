@@ -18,6 +18,13 @@ except ImportError:
 from src.document_loader import JSONDocumentLoader, create_sample_data
 from src.embeddings import EmbeddingManager
 from src.llm_providers import BaseLLMProvider, LLMProviderFactory, LocalProvider
+from src.retrievers import (
+    BaseRetriever,
+    BM25Retriever,
+    DenseRetriever,
+    HybridRetriever,
+    RetrievedDoc,
+)
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
 
 logger = get_logger(__name__)
@@ -97,9 +104,15 @@ class TurkishRAGSystem:
         
         # Vector store (initialized later)
         self.vector_store: Optional[Chroma] = None
-        
+
         # Document loader
         self.document_loader = JSONDocumentLoader(data_folder)
+
+        # Retrievers — built when vector store is ready (dense always,
+        # sparse from the same docs, hybrid as RRF of the two)
+        self._dense_retriever: Optional[BaseRetriever] = None
+        self._sparse_retriever: Optional[BaseRetriever] = None
+        self._hybrid_retriever: Optional[BaseRetriever] = None
         
         # System prompt template
         self.system_prompt = TURKISH_SYSTEM_PROMPT
@@ -168,7 +181,10 @@ class TurkishRAGSystem:
             client=self.chroma_client,
             collection_name="turkish_rag_collection"
         )
-        
+
+        # Sparse + hybrid retrievers built over the same split chunks
+        self._build_retrievers(split_docs)
+
         logger.info(f"{StatusEmoji.SUCCESS} Vector store created successfully!")
     
     def load_existing_vector_store(self) -> bool:
@@ -190,12 +206,15 @@ class TurkishRAGSystem:
                     collection_name="turkish_rag_collection",
                     embedding_function=self.embedding_manager.embeddings
                 )
-                
+
                 # Verify it has documents
                 collection = self.chroma_client.get_collection("turkish_rag_collection")
                 doc_count = collection.count()
-                
+
                 if doc_count > 0:
+                    # BM25 is in-memory only — rebuild from the source JSON files
+                    # so dense/sparse/hybrid all stay coherent.
+                    self._build_retrievers(self._reload_split_chunks())
                     logger.info(f"{StatusEmoji.SUCCESS} Loaded existing collection with {doc_count} documents")
                     return True
                 else:
@@ -207,21 +226,75 @@ class TurkishRAGSystem:
             logger.warning(f"{StatusEmoji.WARNING} Could not load existing collection: {e}")
             return False
     
-    def search(self, query: str, k: int = 5) -> List[Document]:
+    # ----- Retriever lifecycle -----
+
+    def _reload_split_chunks(self) -> List[Document]:
+        """Disk'teki JSON'ları yükle ve chunk'la — BM25 in-memory için."""
+        documents = self.document_loader.load_all()
+        if not documents:
+            return []
+        return self.embedding_manager.split_documents(documents)
+
+    def _build_retrievers(self, split_docs: List[Document]) -> None:
+        """Vector store hazırken dense+sparse+hybrid retriever'ları kur."""
+        if self.vector_store is not None:
+            self._dense_retriever = DenseRetriever(self.vector_store)
+        if split_docs:
+            self._sparse_retriever = BM25Retriever(split_docs)
+        if self._dense_retriever and self._sparse_retriever:
+            self._hybrid_retriever = HybridRetriever(
+                dense=self._dense_retriever,
+                sparse=self._sparse_retriever,
+            )
+        logger.info(
+            f"{StatusEmoji.INFO} Retrievers ready: "
+            f"dense={self._dense_retriever is not None}, "
+            f"sparse={self._sparse_retriever is not None}, "
+            f"hybrid={self._hybrid_retriever is not None}"
+        )
+
+    def _select_retriever(self, strategy: Optional[str]) -> Optional[BaseRetriever]:
+        """Strateji adından retriever'ı çöz. Default: hybrid (varsa), yoksa dense."""
+        if strategy == "dense":
+            return self._dense_retriever
+        if strategy == "sparse":
+            return self._sparse_retriever
+        if strategy == "hybrid":
+            return self._hybrid_retriever
+        # auto / None — production default: hybrid if available
+        return self._hybrid_retriever or self._dense_retriever
+
+    def search(
+        self,
+        query: str,
+        k: int = 5,
+        *,
+        strategy: Optional[str] = None,
+    ) -> List[Document]:
         """
-        Search for relevant documents.
-        
+        Search for relevant documents using the chosen retrieval strategy.
+
         Args:
             query: Search query
             k: Number of documents to return
-            
+            strategy: 'dense' | 'sparse' | 'hybrid' | None (auto)
+
         Returns:
             List of relevant Document objects
         """
-        if not self.vector_store:
-            return []
-        
-        return self.vector_store.similarity_search(query, k=k)
+        retriever = self._select_retriever(strategy)
+        if retriever is None:
+            # Legacy fallback path
+            if not self.vector_store:
+                return []
+            return self.vector_store.similarity_search(query, k=k)
+
+        retrieved = retriever.retrieve(query, k=k)
+        # Adapt RetrievedDoc → langchain Document for the rest of the pipeline
+        return [
+            Document(page_content=r.page_content, metadata=dict(r.metadata))
+            for r in retrieved
+        ]
     
     def calculate_relevance_score(self, question: str, documents: List[Document]) -> float:
         """
@@ -251,6 +324,7 @@ class TurkishRAGSystem:
         *,
         llm_provider: Optional[BaseLLMProvider] = None,
         llm_params: Optional[Dict[str, Any]] = None,
+        retrieval_strategy: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
@@ -279,8 +353,11 @@ class TurkishRAGSystem:
         
         try:
             # Search for relevant documents
-            logger.info(f"{StatusEmoji.SEARCH} Searching for: '{question}'...")
-            relevant_docs = self.search(question, k=k)
+            strategy_label = retrieval_strategy or "auto"
+            logger.info(
+                f"{StatusEmoji.SEARCH} Searching ({strategy_label}) for: '{question}'..."
+            )
+            relevant_docs = self.search(question, k=k, strategy=retrieval_strategy)
             
             # Calculate relevance score
             relevance_score = self.calculate_relevance_score(question, relevant_docs)
@@ -329,7 +406,8 @@ class TurkishRAGSystem:
                 ],
                 "context_used": context[:500] + "..." if len(context) > 500 else context,
                 "source": "rag_system",
-                "relevance_score": relevance_score
+                "relevance_score": relevance_score,
+                "retrieval_strategy": strategy_label,
             }
             
         except Exception as e:

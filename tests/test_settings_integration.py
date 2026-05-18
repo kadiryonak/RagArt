@@ -20,11 +20,13 @@ def client(monkeypatch):
 
     captured: dict = {}
 
-    def stub_ask(question, *, k=5, llm_provider=None, llm_params=None):
+    def stub_ask(question, *, k=5, llm_provider=None, llm_params=None,
+                 retrieval_strategy=None):
         captured["question"] = question
         captured["k"] = k
         captured["llm_provider"] = llm_provider
         captured["llm_params"] = llm_params
+        captured["retrieval_strategy"] = retrieval_strategy
         return {
             "question": question,
             "answer": "stub cevap",
@@ -165,6 +167,26 @@ class TestAskWithBYOK:
         assert r.status_code == 200
         from src.llm_providers import LocalProvider
         assert isinstance(captured["llm_provider"], LocalProvider)
+
+    def test_retrieval_strategy_threaded_through(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "veri yapıları nedir?"},
+            headers={"X-Retrieval-Strategy": "hybrid"},
+        )
+        assert r.status_code == 200
+        assert captured["retrieval_strategy"] == "hybrid"
+
+    def test_unknown_retrieval_strategy_falls_back_to_none(self, client):
+        c, captured, _ = client
+        r = c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Retrieval-Strategy": "magic-strategy-9000"},
+        )
+        assert r.status_code == 200
+        assert captured["retrieval_strategy"] is None
 
     def test_ollama_no_key_ok(self, client):
         c, captured, _ = client

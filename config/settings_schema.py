@@ -140,6 +140,7 @@ class RequestSettings:
     api_key: Optional[str] = None
     model: Optional[str] = None
     llm_params: LLMParams = field(default_factory=LLMParams)
+    retrieval_strategy: Optional[str] = None  # 'dense' | 'sparse' | 'hybrid' | None
 
 
 def parse_request_settings(headers) -> RequestSettings:
@@ -154,11 +155,17 @@ def parse_request_settings(headers) -> RequestSettings:
     provider = (headers.get("X-Provider") or "").strip().lower() or None
     if provider == "":
         provider = None
+
+    strategy = (headers.get("X-Retrieval-Strategy") or "").strip().lower() or None
+    if strategy and strategy not in ("dense", "sparse", "hybrid"):
+        strategy = None  # bilinmeyen değer → sessizce default
+
     return RequestSettings(
         provider=provider,
         api_key=(headers.get("X-API-Key") or "").strip() or None,
         model=(headers.get("X-Model") or "").strip() or None,
         llm_params=LLMParams.from_json_string(headers.get("X-LLM-Params")),
+        retrieval_strategy=strategy,
     )
 
 
@@ -173,6 +180,16 @@ def get_settings_schema() -> Dict[str, Any]:
                 "params": PROVIDER_PARAMS[pid],
             }
             for pid in ("deepseek", "openai", "groq", "ollama", "huggingface", "local")
+        ],
+        "retrieval_strategies": [
+            {"id": "auto",   "label": "Otomatik (önerilen)",
+             "desc": "Hybrid varsa hybrid, yoksa dense."},
+            {"id": "dense",  "label": "Dense (embedding)",
+             "desc": "Anlamsal arama. Paraphrase'lere güçlü, exact match'lere zayıf."},
+            {"id": "sparse", "label": "Sparse (BM25)",
+             "desc": "Term-bazlı. Özel isim/kısaltma/kod için güçlü."},
+            {"id": "hybrid", "label": "Hybrid (RRF)",
+             "desc": "Dense + BM25 birleşimi. Production standardı."},
         ],
         "param_descriptions_tr": {
             "temperature": "Yaratıcılık. Düşük → tutarlı/kuralcı, yüksek → çeşitli/yaratıcı.",

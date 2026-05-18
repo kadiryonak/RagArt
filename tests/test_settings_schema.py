@@ -175,3 +175,27 @@ class TestSchemaShape:
         assert "temperature" in groq_params
         assert "top_p" in groq_params
         assert "max_tokens" in groq_params
+
+    def test_schema_has_retrieval_strategies(self):
+        schema = get_settings_schema()
+        assert "retrieval_strategies" in schema
+        ids = {s["id"] for s in schema["retrieval_strategies"]}
+        assert {"auto", "dense", "sparse", "hybrid"} == ids
+
+
+class TestRetrievalParsing:
+    def test_valid_strategy(self):
+        s = parse_request_settings(_MockHeaders(**{"X-Retrieval-Strategy": "hybrid"}))
+        assert s.retrieval_strategy == "hybrid"
+
+    def test_case_insensitive(self):
+        s = parse_request_settings(_MockHeaders(**{"X-Retrieval-Strategy": "  HYBRID  "}))
+        assert s.retrieval_strategy == "hybrid"
+
+    def test_unknown_silently_dropped(self):
+        s = parse_request_settings(_MockHeaders(**{"X-Retrieval-Strategy": "magic"}))
+        assert s.retrieval_strategy is None
+
+    def test_no_header_means_none(self):
+        s = parse_request_settings(_MockHeaders())
+        assert s.retrieval_strategy is None

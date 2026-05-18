@@ -166,6 +166,7 @@ def ask_question():
             k=settings.TOP_K_DOCUMENTS,
             llm_provider=llm_override,
             llm_params=req_settings.llm_params.to_dict(),
+            retrieval_strategy=req_settings.retrieval_strategy,
         )
         
         # Check for errors
