@@ -122,3 +122,11 @@ tests/evaluation/reports/*.json
 !tests/evaluation/baselines/
 !tests/evaluation/baselines/*.md
 !tests/evaluation/baselines/*.json
+
+# User-uploaded knowledge base files — keep only the sample Wikipedia set.
+# Everything new in data/ (PDFs, DOCX, your own JSONs, etc.) stays local.
+data/*.pdf
+data/*.docx
+data/*.md
+data/*.markdown
+data/*.txt
