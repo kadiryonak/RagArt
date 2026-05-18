@@ -273,6 +273,38 @@ def get_data_info():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/source/<path:filename>")
+def serve_source(filename):
+    """Serve a raw source file from the data folder.
+
+    Used by the UI so that clicking a source-document chip opens the
+    original file (PDFs with #page=N let the browser jump to the right
+    page). Path-traversal safe via secure_filename.
+    """
+    safe = secure_filename(filename)
+    if not safe or safe != filename:
+        # secure_filename strips or rewrites — refuse the rewritten form
+        # to make traversal attempts loud rather than silent
+        return jsonify({"error": "Invalid filename"}), 400
+
+    folder = os.path.abspath(settings.DATA_FOLDER)
+    target = os.path.join(folder, safe)
+    if not os.path.exists(target) or not os.path.isfile(target):
+        return jsonify({"error": "Not found"}), 404
+
+    ext = os.path.splitext(safe)[1].lower()
+    mime = {
+        ".pdf":     "application/pdf",
+        ".json":    "application/json; charset=utf-8",
+        ".md":      "text/markdown; charset=utf-8",
+        ".markdown": "text/markdown; charset=utf-8",
+        ".txt":     "text/plain; charset=utf-8",
+        ".docx":    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }.get(ext, "application/octet-stream")
+
+    return send_from_directory(folder, safe, mimetype=mime)
+
+
 @app.route("/settings/schema")
 def settings_schema():
     """Return the settings schema used by the frontend to build the UI.
