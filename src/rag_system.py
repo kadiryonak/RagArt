@@ -282,7 +282,14 @@ class TurkishRAGSystem:
         return self.embedding_manager.split_documents(documents)
 
     def _build_retrievers(self, split_docs: List[Document]) -> None:
-        """Vector store hazırken dense+sparse+hybrid retriever'ları kur."""
+        """Vector store hazırken dense+sparse+hybrid retriever'ları kur.
+
+        ÖNEMLİ: Reindex bu metodu yeniden çağırır. Eski cache'lenmiş
+        RerankedRetriever'lar ESKİ vector_store'a sarılı kalır ve sonraki
+        sorgularda silinmiş ChromaDB koleksiyonuna istek atar
+        ("Collection [UUID] does not exist"). Bu yüzden her rebuild'de
+        reranker cache'ini SIFIRLAMAK ŞART.
+        """
         if self.vector_store is not None:
             self._dense_retriever = DenseRetriever(self.vector_store)
         if split_docs:
@@ -292,11 +299,14 @@ class TurkishRAGSystem:
                 dense=self._dense_retriever,
                 sparse=self._sparse_retriever,
             )
+        # Invalidate reranker cache — see docstring above.
+        self._reranker_cache.clear()
         logger.info(
             f"{StatusEmoji.INFO} Retrievers ready: "
             f"dense={self._dense_retriever is not None}, "
             f"sparse={self._sparse_retriever is not None}, "
-            f"hybrid={self._hybrid_retriever is not None}"
+            f"hybrid={self._hybrid_retriever is not None} "
+            f"(reranker cache cleared)"
         )
 
     def _select_retriever(
@@ -364,9 +374,33 @@ class TurkishRAGSystem:
             # Legacy fallback path — no context processors applied
             if not self.vector_store:
                 return []
-            return self.vector_store.similarity_search(query, k=k)
+            try:
+                return self.vector_store.similarity_search(query, k=k)
+            except Exception as e:
+                logger.error(
+                    f"{StatusEmoji.ERROR} Stale vector_store ({type(e).__name__}: {e}). "
+                    "Reindex may be required."
+                )
+                # Tell ask() the index is gone by raising a recognisable error
+                raise RuntimeError("STALE_INDEX") from e
 
-        retrieved = retriever.retrieve(query, k=k)
+        try:
+            retrieved = retriever.retrieve(query, k=k)
+        except Exception as e:
+            err = str(e)
+            # ChromaDB throws "Collection [UUID] does not exist" when the
+            # vector_store reference points at a deleted collection. Most
+            # commonly happens if reindex ran in a way that left a stale
+            # cached retriever. After the fix in _build_retrievers this
+            # shouldn't happen, but be defensive.
+            if "does not exist" in err or "Collection" in err:
+                logger.error(
+                    f"{StatusEmoji.ERROR} Stale ChromaDB collection — "
+                    "drop reranker cache and surface a clean error."
+                )
+                self._reranker_cache.clear()
+                raise RuntimeError("STALE_INDEX") from e
+            raise
 
         # Apply context engineering processors (if configured) on the
         # RetrievedDoc layer so processors can see retrieval scores.
@@ -582,6 +616,22 @@ class TurkishRAGSystem:
             }
             
         except Exception as e:
+            if isinstance(e, RuntimeError) and str(e) == "STALE_INDEX":
+                # Friendly Turkish message — UI surfaces this directly
+                logger.error(f"{StatusEmoji.ERROR} Stale index detected")
+                return {
+                    "question": question,
+                    "answer": (
+                        "Vektör tabanı eski bir koleksiyona referans veriyor "
+                        "(muhtemelen yeniden indeksleme sırasında oluştu). "
+                        "Lütfen 'Dosyaları Yönet' sekmesinden "
+                        "**Bilgi Tabanını Yeniden İndeksle** butonuna basın "
+                        "ve aramayı tekrarlayın."
+                    ),
+                    "source_documents": [],
+                    "context_used": "",
+                    "source": "stale_index",
+                }
             logger.error(f"{StatusEmoji.ERROR} Error: {e}")
             return {
                 "question": question,
