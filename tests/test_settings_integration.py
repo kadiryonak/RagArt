@@ -22,7 +22,9 @@ def client(monkeypatch):
 
     def stub_ask(question, *, k=5, llm_provider=None, llm_params=None,
                  retrieval_strategy=None, rerank=False, rerank_fetch_k=20,
-                 history=None, memory_strategy=None):
+                 history=None, memory_strategy=None,
+                 deduplicate_context=False, reorder_context=False,
+                 max_context_tokens=None):
         captured["question"] = question
         captured["k"] = k
         captured["llm_provider"] = llm_provider
@@ -32,6 +34,9 @@ def client(monkeypatch):
         captured["rerank_fetch_k"] = rerank_fetch_k
         captured["history"] = history or []
         captured["memory_strategy"] = memory_strategy
+        captured["deduplicate_context"] = deduplicate_context
+        captured["reorder_context"] = reorder_context
+        captured["max_context_tokens"] = max_context_tokens
         return {
             "question": question,
             "answer": "stub cevap",
@@ -270,6 +275,40 @@ class TestAskWithBYOK:
         )
         assert r.status_code == 200
         assert captured["history"] == []
+
+    def test_context_dedup_header(self, client):
+        c, captured, _ = client
+        r = c.post("/ask", json={"question": "x"},
+                   headers={"X-Context-Deduplicate": "true"})
+        assert r.status_code == 200
+        assert captured["deduplicate_context"] is True
+
+    def test_context_reorder_header(self, client):
+        c, captured, _ = client
+        r = c.post("/ask", json={"question": "x"},
+                   headers={"X-Context-Reorder": "1"})
+        assert r.status_code == 200
+        assert captured["reorder_context"] is True
+
+    def test_context_max_tokens_header(self, client):
+        c, captured, _ = client
+        r = c.post("/ask", json={"question": "x"},
+                   headers={"X-Context-Max-Tokens": "1500"})
+        assert r.status_code == 200
+        assert captured["max_context_tokens"] == 1500
+
+    def test_context_max_tokens_clamped(self, client):
+        c, captured, _ = client
+        c.post("/ask", json={"question": "x"},
+               headers={"X-Context-Max-Tokens": "99999"})
+        assert captured["max_context_tokens"] == 32000
+
+    def test_context_flags_default_off(self, client):
+        c, captured, _ = client
+        c.post("/ask", json={"question": "x"})
+        assert captured["deduplicate_context"] is False
+        assert captured["reorder_context"] is False
+        assert captured["max_context_tokens"] is None
 
     def test_ollama_no_key_ok(self, client):
         c, captured, _ = client

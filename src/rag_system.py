@@ -34,6 +34,12 @@ from src.memory import (
     SummaryBufferMemory,
     VectorRetrievalMemory,
 )
+from src.context import (
+    LostInTheMiddleReorderer,
+    ProcessorChain,
+    RedundancyFilter,
+    TokenBudgetTrimmer,
+)
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
 
 logger = get_logger(__name__)
@@ -326,6 +332,7 @@ class TurkishRAGSystem:
         strategy: Optional[str] = None,
         rerank: bool = False,
         rerank_fetch_k: int = 20,
+        context_chain: Optional[ProcessorChain] = None,
     ) -> List[Document]:
         """
         Search for relevant documents using the chosen retrieval strategy.
@@ -336,6 +343,8 @@ class TurkishRAGSystem:
             strategy: 'dense' | 'sparse' | 'hybrid' | None (auto)
             rerank: Apply cross-encoder rerank on top of the strategy
             rerank_fetch_k: How many candidates to feed the reranker
+            context_chain: Optional context-engineering processors applied
+                           AFTER retrieval (dedup / token budget / reorder)
 
         Returns:
             List of relevant Document objects
@@ -344,12 +353,18 @@ class TurkishRAGSystem:
             strategy, rerank=rerank, rerank_fetch_k=rerank_fetch_k,
         )
         if retriever is None:
-            # Legacy fallback path
+            # Legacy fallback path — no context processors applied
             if not self.vector_store:
                 return []
             return self.vector_store.similarity_search(query, k=k)
 
         retrieved = retriever.retrieve(query, k=k)
+
+        # Apply context engineering processors (if configured) on the
+        # RetrievedDoc layer so processors can see retrieval scores.
+        if context_chain is not None and retrieved:
+            retrieved = context_chain.process(query, retrieved)
+
         # Adapt RetrievedDoc → langchain Document for the rest of the pipeline
         return [
             Document(page_content=r.page_content, metadata=dict(r.metadata))
@@ -395,6 +410,33 @@ class TurkishRAGSystem:
             )
         return NoMemory()
 
+    def _build_context_chain(
+        self,
+        *,
+        deduplicate: bool = False,
+        reorder: bool = False,
+        max_context_tokens: Optional[int] = None,
+        dedup_threshold: float = 0.92,
+    ) -> Optional[ProcessorChain]:
+        """Hangi context processor'ların aktif olduğuna göre zincir kur.
+
+        Sıra önemli — docstring src.context.base.ProcessorChain'de:
+            redundancy → token budget → reorderer
+        """
+        processors: list = []
+        if deduplicate:
+            processors.append(RedundancyFilter(
+                embed_fn=self.embedding_manager.embed_query,
+                similarity_threshold=dedup_threshold,
+            ))
+        if max_context_tokens is not None:
+            processors.append(TokenBudgetTrimmer(max_tokens=max_context_tokens))
+        if reorder:
+            processors.append(LostInTheMiddleReorderer())
+        if not processors:
+            return None
+        return ProcessorChain(processors)
+
     def ask(
         self,
         question: str,
@@ -407,6 +449,9 @@ class TurkishRAGSystem:
         rerank_fetch_k: int = 20,
         history: Optional[List[ConversationTurn]] = None,
         memory_strategy: Optional[str] = None,
+        deduplicate_context: bool = False,
+        reorder_context: bool = False,
+        max_context_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
@@ -434,14 +479,34 @@ class TurkishRAGSystem:
             }
         
         try:
+            # Build context-engineering chain (None if no flags set)
+            context_chain = self._build_context_chain(
+                deduplicate=deduplicate_context,
+                reorder=reorder_context,
+                max_context_tokens=max_context_tokens,
+            )
+            context_label_parts = []
+            if deduplicate_context:
+                context_label_parts.append("dedup")
+            if max_context_tokens is not None:
+                context_label_parts.append(f"budget={max_context_tokens}")
+            if reorder_context:
+                context_label_parts.append("reorder")
+            context_label = "+ctx[" + ",".join(context_label_parts) + "]" if context_label_parts else ""
+
             # Search for relevant documents
-            strategy_label = (retrieval_strategy or "auto") + ("+rerank" if rerank else "")
+            strategy_label = (
+                (retrieval_strategy or "auto")
+                + ("+rerank" if rerank else "")
+                + context_label
+            )
             logger.info(
                 f"{StatusEmoji.SEARCH} Searching ({strategy_label}) for: '{question}'..."
             )
             relevant_docs = self.search(
                 question, k=k, strategy=retrieval_strategy,
                 rerank=rerank, rerank_fetch_k=rerank_fetch_k,
+                context_chain=context_chain,
             )
             
             # Calculate relevance score

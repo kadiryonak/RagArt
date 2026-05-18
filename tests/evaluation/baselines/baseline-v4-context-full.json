@@ -1,0 +1,1082 @@
+{
+  "total_items": 12,
+  "total_duration_s": 114.88,
+  "layers_used": [
+    "L1_rules",
+    "L2_vector",
+    "L3_lexical"
+  ],
+  "by_layer": {
+    "L1_rules": {
+      "n": 12,
+      "avg_score": 0.9111,
+      "pass_rate": 1.0,
+      "avg_latency_ms": 0.22
+    },
+    "L2_vector": {
+      "n": 12,
+      "avg_score": 0.85,
+      "pass_rate": 0.8333,
+      "avg_latency_ms": 85.53
+    },
+    "L3_lexical": {
+      "n": 12,
+      "avg_score": 0.2965,
+      "pass_rate": 0.75,
+      "avg_latency_ms": 0.69
+    }
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 4,
+      "avg_score": 0.6457
+    },
+    "medium": {
+      "n": 4,
+      "avg_score": 0.7067
+    },
+    "hard": {
+      "n": 4,
+      "avg_score": 0.7052
+    }
+  },
+  "overall_avg_score": 0.6859,
+  "items": [
+    {
+      "id": "easy-01-algoritma-tanim",
+      "question": "Algoritma nedir?",
+      "difficulty": "easy",
+      "category": "factual",
+      "critical": true,
+      "answer": "Algoritma, \"belli bir problemi çözmek veya belirli bir amaca ulaşmak için tasarlanan yol\" olarak tanımlanır. Ayrıca, \"bir başlangıç durumundan başladığında, açıkça belirlenmiş bir son durumunda sonlanan, sonlu işlemler kümesidir.\"",
+      "retrieved_sources": [
+        "Algoritma.json",
+        "Algoritma.json",
+        "Algoritma.json",
+        "Matematik.json"
+      ],
+      "rag_latency_ms": 20934.25,
+      "overall_score": 0.7781,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 0.9,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 230,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.1042,
+              "tr_char_count": 20
+            },
+            "keywords": {
+              "score": 0.75,
+              "keywords_total": 4,
+              "keywords_found": 3,
+              "found": [
+                "algoritma",
+                "problem",
+                "sonlu"
+              ],
+              "missing": [
+                "adım"
+              ]
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.93,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.9496,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.935,
+              "normalized": 0.9675
+            },
+            "answer_vs_context": {
+              "cosine": 0.8156,
+              "normalized": 0.9078
+            }
+          },
+          "latency_ms": 141.3,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.4847,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.5286,
+            "bleu_2": 0.3914,
+            "rouge_l_f": 0.4875,
+            "rouge_l_p": 0.5172,
+            "rouge_l_r": 0.4688,
+            "brevity_penalty": 0.9017,
+            "candidate_tokens": 29,
+            "reference_tokens": 32
+          },
+          "latency_ms": 0.76,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "easy-02-python-tanim",
+      "question": "Python nedir ve hangi alanlarda kullanılır?",
+      "difficulty": "easy",
+      "category": "factual",
+      "critical": false,
+      "answer": "Python, \"nesne yönelimli, yorumlamalı, birimsel (modüler) ve etkileşimli yüksek seviyeli bir programlama dilidir.\" Python'un kullanımı hakkında verilen bilgilerde yeterli detay bulunmuyor.",
+      "retrieved_sources": [
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json",
+        "Programlama_dilleri.json",
+        "Python_(programlama_dili).json"
+      ],
+      "rag_latency_ms": 9810.85,
+      "overall_score": 0.7251,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 1.0,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 188,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0506,
+              "tr_char_count": 8
+            },
+            "keywords": {
+              "score": 1.0,
+              "keywords_total": 4,
+              "keywords_found": 4,
+              "found": [
+                "Python",
+                "programlama",
+                "nesne yönelimli",
+                "yorumlamalı"
+              ],
+              "missing": []
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.07,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.9079,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.8168,
+              "normalized": 0.9084
+            },
+            "answer_vs_context": {
+              "cosine": 0.8132,
+              "normalized": 0.9066
+            }
+          },
+          "latency_ms": 86.38,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.2674,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.2309,
+            "bleu_2": 0.1885,
+            "rouge_l_f": 0.3434,
+            "rouge_l_p": 0.5,
+            "rouge_l_r": 0.2821,
+            "brevity_penalty": 0.4618,
+            "candidate_tokens": 22,
+            "reference_tokens": 39
+          },
+          "latency_ms": 0.48,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "easy-03-yapay-zeka",
+      "question": "Yapay zeka nedir?",
+      "difficulty": "easy",
+      "category": "factual",
+      "critical": true,
+      "answer": "Yapay zekâ (YZ), insanlar da dahil olmak üzere hayvanlar tarafından, doğal zekânın aksine makineler tarafından görüntülenen zekâ çeşididir.",
+      "retrieved_sources": [
+        "Yapay_zeka.json",
+        "Yapay_zeka.json",
+        "Yapay_zeka.json",
+        "Yapay_zeka.json",
+        "Yapay_zeka.json"
+      ],
+      "rag_latency_ms": 7628.03,
+      "overall_score": 0.5573,
+      "all_passed": false,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 0.7333,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 139,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0855,
+              "tr_char_count": 10
+            },
+            "keywords": {
+              "score": 0.333,
+              "keywords_total": 3,
+              "keywords_found": 1,
+              "found": [
+                "makine"
+              ],
+              "missing": [
+                "yapay zeka",
+                "öğrenme"
+              ]
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.07,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.8512,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.6659,
+              "normalized": 0.8329
+            },
+            "answer_vs_context": {
+              "cosine": 0.7876,
+              "normalized": 0.8938
+            }
+          },
+          "latency_ms": 75.13,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.0875,
+          "passed": false,
+          "details": {
+            "bleu_1": 0.1062,
+            "bleu_2": 0.0,
+            "rouge_l_f": 0.1125,
+            "rouge_l_p": 0.1579,
+            "rouge_l_r": 0.0938,
+            "brevity_penalty": 0.5045,
+            "candidate_tokens": 19,
+            "reference_tokens": 32
+          },
+          "latency_ms": 0.48,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "medium-01-algoritma-tarih",
+      "question": "Algoritma kelimesi nereden gelir ve ilk algoritma kim tarafından yazılmıştır?",
+      "difficulty": "medium",
+      "category": "factual",
+      "critical": true,
+      "answer": "Algoritma sözcüğü, Özbekistan'ın Harezm bölgesindeki Hive kentinde doğmuş olan Ebu Abdullah Muhammed İbn Musa el Harezmi'den gelir. \"Hisab el-cebir ve el-mukabala (حساب الجبر و المقابلة)\" kitabı dünyanın ilk cebir kitabı ve aynı zamanda ilk algoritma koleksiyonunu oluşturur.",
+      "retrieved_sources": [
+        "Algoritma.json",
+        "İnternet_tarihi.json",
+        "C++.json",
+        "Yapay_zeka.json"
+      ],
+      "rag_latency_ms": 10437.8,
+      "overall_score": 0.7264,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 0.8,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 275,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0702,
+              "tr_char_count": 16
+            },
+            "keywords": {
+              "score": 0.5,
+              "keywords_total": 4,
+              "keywords_found": 2,
+              "found": [
+                "Harezm",
+                "cebir"
+              ],
+              "missing": [
+                "el-Harezmi",
+                "9. yüzyıl"
+              ]
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.09,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.9387,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.8636,
+              "normalized": 0.9318
+            },
+            "answer_vs_context": {
+              "cosine": 0.9098,
+              "normalized": 0.9549
+            }
+          },
+          "latency_ms": 81.76,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.4404,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.4477,
+            "bleu_2": 0.3705,
+            "rouge_l_f": 0.4682,
+            "rouge_l_p": 0.5263,
+            "rouge_l_r": 0.4348,
+            "brevity_penalty": 0.8102,
+            "candidate_tokens": 38,
+            "reference_tokens": 46
+          },
+          "latency_ms": 0.79,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "medium-02-python-isim-kaynagi",
+      "question": "Python programlama dilinin ismi nereden gelir?",
+      "difficulty": "medium",
+      "category": "factual",
+      "critical": false,
+      "answer": "Python'un ismi, dilin yaratıcısı olan Guido van Rossum'un dili geliştirirken keyif aldığı İngiliz komedi grubu Monty Python'dan gelmektedir.",
+      "retrieved_sources": [
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json"
+      ],
+      "rag_latency_ms": 7461.7,
+      "overall_score": 0.7632,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 1.0,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 140,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0678,
+              "tr_char_count": 8
+            },
+            "keywords": {
+              "score": 1.0,
+              "keywords_total": 3,
+              "keywords_found": 3,
+              "found": [
+                "Monty Python",
+                "Guido van Rossum",
+                "komedi"
+              ],
+              "missing": []
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.06,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.954,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.9156,
+              "normalized": 0.9578
+            },
+            "answer_vs_context": {
+              "cosine": 0.89,
+              "normalized": 0.945
+            }
+          },
+          "latency_ms": 60.57,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.3355,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.2747,
+            "bleu_2": 0.2408,
+            "rouge_l_f": 0.4437,
+            "rouge_l_p": 0.6818,
+            "rouge_l_r": 0.3571,
+            "brevity_penalty": 0.4029,
+            "candidate_tokens": 22,
+            "reference_tokens": 42
+          },
+          "latency_ms": 0.55,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "medium-03-veri-yapilari",
+      "question": "Veri yapıları nedir ve hangi temel türleri vardır?",
+      "difficulty": "medium",
+      "category": "factual",
+      "critical": false,
+      "answer": "Veri yapıları, \"verileri verimli bir şekilde organize etmek ve depolamak\" gibi ortak bir hedefi paylaşır. Temel türleri arasında dizi, kayıt ve bağlantılı veri yapıları bulunur.",
+      "retrieved_sources": [
+        "Veri_yapıları.json",
+        "Veri_madenciliği.json",
+        "Veri_madenciliği.json",
+        "Veri_bilimi.json",
+        "Veri_yapıları.json"
+      ],
+      "rag_latency_ms": 7117.57,
+      "overall_score": 0.639,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 0.68,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 177,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0884,
+              "tr_char_count": 13
+            },
+            "keywords": {
+              "score": 0.2,
+              "keywords_total": 5,
+              "keywords_found": 1,
+              "found": [
+                "dizi"
+              ],
+              "missing": [
+                "liste",
+                "yığın",
+                "kuyruk",
+                "ağaç"
+              ]
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.08,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.9057,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.8489,
+              "normalized": 0.9244
+            },
+            "answer_vs_context": {
+              "cosine": 0.7238,
+              "normalized": 0.8619
+            }
+          },
+          "latency_ms": 62.9,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.3314,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.3628,
+            "bleu_2": 0.2054,
+            "rouge_l_f": 0.3629,
+            "rouge_l_p": 0.44,
+            "rouge_l_r": 0.3235,
+            "brevity_penalty": 0.6977,
+            "candidate_tokens": 25,
+            "reference_tokens": 34
+          },
+          "latency_ms": 0.45,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "medium-04-derin-ogrenme",
+      "question": "Derin öğrenme ile makine öğrenmesi arasındaki fark nedir?",
+      "difficulty": "medium",
+      "category": "analytical",
+      "critical": true,
+      "answer": "Derin öğrenme, makine öğrenmesinin bir alt kümesidir ve bir veya daha fazla gizli katman içeren yapay sinir ağları ve benzeri makine öğrenme algoritmalarını kapsar. Yani, derin öğrenme, makine öğrenmesinin bir özel türüdür, özellikle yapay sinir ağlarını kullanır.",
+      "retrieved_sources": [
+        "Makine_öğrenmesi.json",
+        "Makine_öğrenmesi.json",
+        "Derin_öğrenme.json"
+      ],
+      "rag_latency_ms": 9020.72,
+      "overall_score": 0.6984,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 0.9,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 264,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.1126,
+              "tr_char_count": 25
+            },
+            "keywords": {
+              "score": 0.75,
+              "keywords_total": 4,
+              "keywords_found": 3,
+              "found": [
+                "makine öğrenmesi",
+                "derin öğrenme",
+                "katman"
+              ],
+              "missing": [
+                "sinir ağı"
+              ]
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.07,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.868,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.8161,
+              "normalized": 0.908
+            },
+            "answer_vs_context": {
+              "cosine": 0.549,
+              "normalized": 0.7745
+            }
+          },
+          "latency_ms": 64.44,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.3273,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.3701,
+            "bleu_2": 0.273,
+            "rouge_l_f": 0.3116,
+            "rouge_l_p": 0.3514,
+            "rouge_l_r": 0.2889,
+            "brevity_penalty": 0.8056,
+            "candidate_tokens": 37,
+            "reference_tokens": 45
+          },
+          "latency_ms": 0.53,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "hard-01-python-kullanim-yerleri",
+      "question": "Hangi büyük kurumlar ve projeler Python kullanır?",
+      "difficulty": "hard",
+      "category": "synthesis",
+      "critical": false,
+      "answer": "Google, NASA, CERN, Wikipedia, Yahoo!, Facebook, Amazon, Instagram ve Spotify gibi büyük kurumlar ve YouTube, Reddit gibi projeler Python kullanır.",
+      "retrieved_sources": [
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json",
+        "OpenAI.json",
+        "Python_(programlama_dili).json"
+      ],
+      "rag_latency_ms": 9101.3,
+      "overall_score": 0.7464,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 1.0,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 147,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0339,
+              "tr_char_count": 4
+            },
+            "keywords": {
+              "score": 1.0,
+              "keywords_total": 4,
+              "keywords_found": 4,
+              "found": [
+                "Google",
+                "NASA",
+                "CERN",
+                "YouTube"
+              ],
+              "missing": []
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.08,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.9035,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.854,
+              "normalized": 0.927
+            },
+            "answer_vs_context": {
+              "cosine": 0.6971,
+              "normalized": 0.8485
+            }
+          },
+          "latency_ms": 101.5,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.3358,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.3419,
+            "bleu_2": 0.1961,
+            "rouge_l_f": 0.3996,
+            "rouge_l_p": 0.6,
+            "rouge_l_r": 0.3243,
+            "brevity_penalty": 0.4274,
+            "candidate_tokens": 20,
+            "reference_tokens": 37
+          },
+          "latency_ms": 0.49,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "hard-02-algoritma-elestirisi",
+      "question": "Algoritmalara yöneltilen toplumsal eleştiriler nelerdir?",
+      "difficulty": "hard",
+      "category": "analytical",
+      "critical": false,
+      "answer": "Algoritmaların toplumsal gruplar arasındaki eşitsizlikleri derinleştirdikleri, yeni güç dengeleri oluşturdukları ve farklı otoriteler tarafından toplumun belli kesimlerini baskılamak için kullanıldıklarının altı çizilmektedir.",
+      "retrieved_sources": [
+        "Algoritma.json",
+        "Coğrafya.json",
+        "İnternet_tarihi.json",
+        "Yapay_zeka.json"
+      ],
+      "rag_latency_ms": 7721.54,
+      "overall_score": 0.7724,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 1.0,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 226,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0887,
+              "tr_char_count": 18
+            },
+            "keywords": {
+              "score": 1.0,
+              "keywords_total": 3,
+              "keywords_found": 3,
+              "found": [
+                "eşitsizlik",
+                "toplumsal",
+                "güç"
+              ],
+              "missing": []
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.07,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.8823,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.8258,
+              "normalized": 0.9129
+            },
+            "answer_vs_context": {
+              "cosine": 0.6218,
+              "normalized": 0.8109
+            }
+          },
+          "latency_ms": 67.77,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.435,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.3734,
+            "bleu_2": 0.3468,
+            "rouge_l_f": 0.5407,
+            "rouge_l_p": 0.7727,
+            "rouge_l_r": 0.4474,
+            "brevity_penalty": 0.4832,
+            "candidate_tokens": 22,
+            "reference_tokens": 38
+          },
+          "latency_ms": 0.35,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "hard-03-multi-hop",
+      "question": "Python'dan etkilenen programlama dilleri hangileridir ve bu diller hangi özellikleri ödünç almıştır?",
+      "difficulty": "hard",
+      "category": "synthesis",
+      "critical": true,
+      "answer": "Python'dan etkilenen programlama dilleri arasında Boo, Cobra, CoffeeScript, ECMAScript/JavaScript, GDScript, Go, Groovy ve Swift yer alır. Bu diller, Python'dan çeşitli özellikler ödünç almışlardır. Örneğin, Cobra ve Boo, Python'un girintileme ve sözdizimini kullanırken, CoffeeScript, Python'dan ilham alan bir sözdizimine sahiptir. ECMAScript/JavaScript, Python'dan yineleyiciler ve oluşturucular ödünç almıştır. Ayrıca, Go, Python gibi dinamik bir dilde çalışma hızı ve dizileri dilimlemek için aynı sözdizimini paylaşması için tasarlanmıştır. Swift de Python'dan ilham alan bir sözdizimine sahiptir.",
+      "retrieved_sources": [
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json",
+        "Python_(programlama_dili).json"
+      ],
+      "rag_latency_ms": 9397.99,
+      "overall_score": 0.7788,
+      "all_passed": true,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 0.92,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 603,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0774,
+              "tr_char_count": 39
+            },
+            "keywords": {
+              "score": 0.8,
+              "keywords_total": 5,
+              "keywords_found": 4,
+              "found": [
+                "Boo",
+                "Go",
+                "Swift",
+                "girintileme"
+              ],
+              "missing": [
+                "Ruby"
+              ]
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.15,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.9444,
+          "passed": true,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.9086,
+              "normalized": 0.9543
+            },
+            "answer_vs_context": {
+              "cosine": 0.8425,
+              "normalized": 0.9212
+            }
+          },
+          "latency_ms": 86.44,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.4719,
+          "passed": true,
+          "details": {
+            "bleu_1": 0.4375,
+            "bleu_2": 0.3721,
+            "rouge_l_f": 0.5563,
+            "rouge_l_p": 0.425,
+            "rouge_l_r": 0.7083,
+            "brevity_penalty": 1.0,
+            "candidate_tokens": 80,
+            "reference_tokens": 48
+          },
+          "latency_ms": 1.01,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "edge-01-out-of-domain",
+      "question": "Türkiye'de 2023 deprem felaketinin etkileri nelerdir?",
+      "difficulty": "hard",
+      "category": "edge_case",
+      "critical": true,
+      "answer": "Bu konuda mevcut verilerimde yeterli detay bulunamadı, ancak genel bilgilerim şunlar:\n\nMerhaba, 2023 yılında yaşanan deprem felaketi Türkiye'de büyük bir yıkıma neden oldu. Depremin etkileri arasında binlerce insanın hayatını kaybetmesi, çok sayıda kişinin yaralanması ve evsiz kalması yer alıyor. Ayrıca, deprem nedeniyle birçok bina, köprü ve altyapı tesisi hasar gördü veya yıkıldı. Ekonomik olarak da büyük bir kaybın yaşandığı bu felaket, ülkenin birçok bölgesini etkiledi.\n\nDepremin ardından, hükümet ve sivil toplum kuruluşları tarafından yardım çalışmaları başlatıldı. İnsanlar, depremzedelere yardım etmek için bir araya geldi ve birçok gönüllü çalışmaya katıldı. Ayrıca, uluslararası toplum da Türkiye'ye yardım elini uzattı.\n\nDeprem felaketinin uzun vadeli etkileri de olacak gibi görünüyor. Ülke, yeniden inşa ve toparlanma sürecine girecek ve bu süreç, ekonomi ve toplum üzerinde önemli bir etkiye sahip olacak. Ancak, Türk halkının dayanışması ve yardımseverliği, bu zorlu süreçte umut verici bir görüntü sunuyor.\n\n---\n📚 **Available Data Topics:**\nTopics: Veri Bilimi, Genetik, Bilgisayarla Görme, Biyoloji, Nasa\n\n💡 **Note:** This response is from general knowledge (local). You can expand your knowledge base for more specific information.",
+      "retrieved_sources": [],
+      "rag_latency_ms": 13185.12,
+      "overall_score": 0.523,
+      "all_passed": false,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 1.0,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 1254,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0927,
+              "tr_char_count": 95
+            },
+            "keywords": {
+              "score": 1.0,
+              "keywords_total": 0,
+              "keywords_found": 0,
+              "missing": []
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.81,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.5277,
+          "passed": false,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.0553,
+              "normalized": 0.5277
+            },
+            "answer_vs_context": null
+          },
+          "latency_ms": 111.38,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.0413,
+          "passed": false,
+          "details": {
+            "bleu_1": 0.0351,
+            "bleu_2": 0.0144,
+            "rouge_l_f": 0.0611,
+            "rouge_l_p": 0.0292,
+            "rouge_l_r": 0.25,
+            "brevity_penalty": 1.0,
+            "candidate_tokens": 171,
+            "reference_tokens": 20
+          },
+          "latency_ms": 1.85,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "edge-02-bos-soru",
+      "question": "?",
+      "difficulty": "easy",
+      "category": "edge_case",
+      "critical": false,
+      "answer": "Bu konuda mevcut verilerimde yeterli detay bulunamadı, ancak genel bilgilerim şunlar:\n\nSoru sormak için buradasın, ancak henüz bir soru sormadın. Lütfen sana nasıl yardımcı olabileceğimi söyleyerek bir soru sor.\n\n---\n📚 **Available Data Topics:**\nTopics: Veri Bilimi, Genetik, Bilgisayarla Görme, Biyoloji, Nasa\n\n💡 **Note:** This response is from general knowledge (local). You can expand your knowledge base for more specific information.",
+      "retrieved_sources": [],
+      "rag_latency_ms": 2024.46,
+      "overall_score": 0.5223,
+      "all_passed": false,
+      "layers": [
+        {
+          "layer": "L1_rules",
+          "score": 1.0,
+          "passed": true,
+          "details": {
+            "length": {
+              "score": 1.0,
+              "length": 438,
+              "verdict": "ok"
+            },
+            "language": {
+              "score": 1.0,
+              "ratio_tr_chars": 0.0376,
+              "tr_char_count": 13
+            },
+            "keywords": {
+              "score": 1.0,
+              "keywords_total": 0,
+              "keywords_found": 0,
+              "missing": []
+            },
+            "bad_patterns": {
+              "score": 1.0,
+              "bad_patterns_hit": []
+            }
+          },
+          "latency_ms": 0.16,
+          "error": null
+        },
+        {
+          "layer": "L2_vector",
+          "score": 0.5668,
+          "passed": false,
+          "details": {
+            "answer_vs_reference": {
+              "cosine": 0.1336,
+              "normalized": 0.5668
+            },
+            "answer_vs_context": null
+          },
+          "latency_ms": 86.77,
+          "error": null
+        },
+        {
+          "layer": "L3_lexical",
+          "score": 0.0,
+          "passed": false,
+          "details": {
+            "bleu_1": 0.0,
+            "bleu_2": 0.0,
+            "rouge_l_f": 0.0,
+            "rouge_l_p": 0.0,
+            "rouge_l_r": 0.0,
+            "brevity_penalty": 1.0,
+            "candidate_tokens": 58,
+            "reference_tokens": 9
+          },
+          "latency_ms": 0.57,
+          "error": null
+        }
+      ]
+    }
+  ]
+}

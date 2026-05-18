@@ -145,6 +145,9 @@ class RequestSettings:
     rerank_fetch_k: int = 20                   # aday sayısı
     memory_strategy: Optional[str] = None      # 'none' | 'sliding_window' | 'summary_buffer' | 'vector'
     history: list = field(default_factory=list)  # list[dict] {role, content}
+    deduplicate_context: bool = False           # redundancy filter (cosine sim)
+    reorder_context: bool = False               # lost-in-the-middle reorder
+    max_context_tokens: Optional[int] = None    # token budget cap
 
 
 def parse_request_settings(headers) -> RequestSettings:
@@ -190,6 +193,20 @@ def parse_request_settings(headers) -> RequestSettings:
         except (ValueError, TypeError):
             history = []
 
+    def _bool_header(name: str) -> bool:
+        return (headers.get(name) or "").strip().lower() in ("1", "true", "yes", "on")
+
+    dedup = _bool_header("X-Context-Deduplicate")
+    reorder = _bool_header("X-Context-Reorder")
+
+    max_ctx_tokens: Optional[int] = None
+    raw_budget = headers.get("X-Context-Max-Tokens")
+    if raw_budget:
+        try:
+            max_ctx_tokens = max(64, min(32000, int(raw_budget)))
+        except (ValueError, TypeError):
+            max_ctx_tokens = None
+
     return RequestSettings(
         provider=provider,
         api_key=(headers.get("X-API-Key") or "").strip() or None,
@@ -200,6 +217,9 @@ def parse_request_settings(headers) -> RequestSettings:
         rerank_fetch_k=rerank_fetch_k,
         memory_strategy=mem,
         history=history,
+        deduplicate_context=dedup,
+        reorder_context=reorder,
+        max_context_tokens=max_ctx_tokens,
     )
 
 
@@ -231,6 +251,22 @@ def get_settings_schema() -> Dict[str, Any]:
                     "İlk çağrıda ~400MB model indirir, sonra cache'lenir. "
                     "Her sorguya ~500-1000ms ekler ama relevance ciddi artar.",
             "default_fetch_k": 20,
+        },
+        "context_engineering": {
+            "deduplicate": {
+                "desc": "Cosine similarity > 0.92 olan chunk'ları temizle "
+                        "(token israfı + lost-in-the-middle riskini azaltır).",
+            },
+            "reorder": {
+                "desc": "Lost-in-the-middle: en alakalı chunk'ları context'in "
+                        "başına ve sonuna yerleştir, zayıfları ortaya at.",
+            },
+            "max_tokens": {
+                "desc": "Toplam context budget (token cinsinden). "
+                        "Aşan kuyruktan kesilir; en az 1 chunk her zaman tutulur.",
+                "min": 64,
+                "max": 32000,
+            },
         },
         "memory_strategies": [
             {"id": "none",          "label": "Hafıza yok",

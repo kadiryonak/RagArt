@@ -344,6 +344,96 @@ L1-L3 katmanları `edge-01`'i FAIL gösteriyordu çünkü cevap kısa/lexical ma
 
 ---
 
+## v4 — Context engineering experiments (HONEST regression) (2026-05-19)
+
+**Branch:** `feat/context-engineering`
+**Komutlar:**
+- Full: `--retrieval hybrid --rerank --context-dedup --context-reorder --context-max-tokens 2000`
+- Reorder only: `--retrieval hybrid --rerank --context-reorder`
+
+**Değişen:** v3 stack üzerine context engineering processors ekledim — RedundancyFilter (cosine sim>0.92 dedup), LostInTheMiddleReorderer (Anthropic'in lost-in-the-middle çözümü), TokenBudgetTrimmer (max 2000 token).
+
+### Özet — TÜM kombinasyonlar v3'ten ya düşük ya da flat
+
+| Konfig | Overall | Pass | Δ vs v3 (0.7096) |
+|---|---|---|---|
+| v3 (hybrid + rerank, hiç context proc.) | 0.7096 | 8/12 | (baseline) |
+| **v4 full bundle** (dedup+reorder+budget=2000) | **0.6859** | 9/12 | **−0.024 regression** |
+| **v4 reorder-only** | **0.7038** | 9/12 | −0.006 (essentially flat) |
+
+### Per-item delta (vs v3-rerank baseline)
+
+Reorder-only:
+- hard-01: 0.798 → 0.829 (**+0.031**)
+- medium-01: 0.722 → 0.753 (**+0.031**)
+- easy-02: 0.652 → 0.733 (**+0.081**)
+- medium-03: 0.661 → 0.613 (**−0.048**)
+- easy-03: 0.630 → 0.630 (flat)
+
+Full bundle eklemeye dedup ve budget koyduğumuzda:
+- easy-03: 0.630 → 0.557 (**−0.073**)
+- medium-03: 0.661 → 0.639 (**−0.022**)
+- medium-04: 0.687 → 0.698 (+0.011)
+- edge-01: 0.607 → 0.523 (**−0.084**)
+
+### NEDEN — bu honest bir sonuç
+
+**Hipotezim "context engineering easy-03/medium-03 regression'larını düzeltir" yanlış çıktı.** Gerçek bulgu:
+
+1. **Top-k=5 + güçlü rerank var → processor'ların yapacak iş kalmıyor.**
+   Reranker zaten en relevant 5'i çekiyor; bunlar üzerine dedup uyguladığımızda **gerçekten birbirine yakın olan ama farklı detaylar içeren chunk'lar** atılıyor (medium-03'te bu görülüyor). Bu kalite KAYBI demek.
+
+2. **Lost-in-the-middle 5 chunk için anlamlı değil.**
+   Anthropic'in araştırması 10-20+ chunk uzunluğunda context için geçerliydi. 5 chunk'ta orta nokta zaten başlangıca yakın; reorderer manipülasyonu sinyal/gürültü oranını düşürüyor.
+
+3. **2000 token budget bazı chunk'ları kuyruktan kesti.**
+   Türkçe içerik karakter başına daha az token olsa da, 5 chunk × ~230 token ≈ 1150 token — budget'ı geçmemesi lazımdı. AMA dedup'tan sonra gelen filtering chain'inde geçti, sebebi metrik gözlemiyle tam belli değil. Daha geniş budget gerek olurdu.
+
+4. **edge-01 ciddi gerileme (-0.084) → dedup faithfulness'ı bozdu.**
+   Out-of-domain sorusunda farklı kaynaklardan gelen "yetersiz bilgi" sinyalleri dedup tarafından eleniyor, LLM "uygun veri yok" diyemiyor.
+
+### Çıkarımlar (bu showcase için kritik)
+
+**Bu, "her best practice her zaman iyi" tuzağına düşmenin somut örneği.** Production literatüründe context engineering kazançlı — ama **belirli koşullarda**:
+- 10+ chunk top-k
+- Uzun döküman context'i (10K+ token)
+- Reranker yok ya da zayıf
+
+Bizim setup (top-k=5, güçlü reranker, kısa Türkçe Wikipedia chunk'ları) bu koşulları sağlamıyor. **Doğru karar: context engineering'i kodda tutmak (BaseContextProcessor plugin pattern), ama default'ta KAPALI bırakmak.** Kullanıcı/operator büyük döküman senaryosunda açar.
+
+### Production karar matrisi
+
+| Senaryo | Context engineering |
+|---|---|
+| Bizim 12-item Wikipedia QA (top-k=5, rerank) | OFF (default) |
+| 100+ sayfa PDF Q&A (uzun chunk, top-k=15) | reorder ON |
+| Cost-sensitive (token budget kritik) | budget ON |
+| Çok benzer chunk üreten retriever (dense-only) | dedup ON |
+
+### Plugin pattern korundu (gelecekte değerli)
+
+`BaseContextProcessor` + `ProcessorChain` sözleşmesi ileride bir LLM-driven compressor veya semantic filter eklemek için sağlam temel. Bu branch'in **kod değeri var** ama **bu test setinde measurable improvement vermiyor**.
+
+### v3 hâlâ best baseline
+
+| | v0 | v1 | v2 | **v3** | v3+L4 | v4 |
+|---|---|---|---|---|---|---|
+| Overall | 0.576 | 0.664 | 0.695 | **0.710** | 0.738 | 0.686 |
+| Status | naive | cloud LLM | +BM25 | +rerank ⭐ | +judge (eval) | regression |
+
+### Kümülatif kazanım (v0 → v3): **+0.134 / +23%**
+
+### İyileştirme hedefleri (revize)
+
+| Hedef | Beklenen | Neden? |
+|---|---|---|
+| `feat/streaming` | TTFT düşer (UX) | Skor etkisi 0, kullanıcı algısı büyük |
+| `feat/caching` | Tekrarlanan sorgular 100x hızlı | Skor etkisi 0, prod kritik |
+| `feat/query-understanding` | edge-02 +0.10 | Boş soru detection (hâlâ açık problem) |
+| `feat/parent-child-retrieval` | Belki L3 +0.05 | Küçük chunk → büyük parent context |
+
+---
+
 ## Şablon: yeni branch sonrası ekleme formatı
 
 ```markdown

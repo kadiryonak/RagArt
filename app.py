@@ -176,6 +176,9 @@ def ask_question():
             rerank_fetch_k=req_settings.rerank_fetch_k,
             history=history,
             memory_strategy=req_settings.memory_strategy,
+            deduplicate_context=req_settings.deduplicate_context,
+            reorder_context=req_settings.reorder_context,
+            max_context_tokens=req_settings.max_context_tokens,
         )
         
         # Check for errors

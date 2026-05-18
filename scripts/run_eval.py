@@ -87,6 +87,21 @@ def parse_args() -> argparse.Namespace:
         help="Candidates fed to reranker (default 20). "
              "Higher = better recall, slower (~50ms per candidate).",
     )
+    p.add_argument(
+        "--context-dedup",
+        action="store_true",
+        help="Apply RedundancyFilter (cosine sim > 0.92 dedup).",
+    )
+    p.add_argument(
+        "--context-reorder",
+        action="store_true",
+        help="Apply LostInTheMiddleReorderer (top chunks to ends).",
+    )
+    p.add_argument(
+        "--context-max-tokens",
+        type=int, default=None,
+        help="Apply TokenBudgetTrimmer with this max token cap.",
+    )
     return p.parse_args()
 
 
@@ -99,6 +114,9 @@ def build_rag_callable(
     retrieval_strategy: str | None = None,
     rerank: bool = False,
     rerank_fetch_k: int = 20,
+    context_dedup: bool = False,
+    context_reorder: bool = False,
+    context_max_tokens: int | None = None,
 ):
     """Gerçek RAG sistemini veya mock'u döndür.
 
@@ -144,6 +162,12 @@ def build_rag_callable(
         print(f"[info] Retrieval strategy: {retrieval_strategy}")
     if rerank:
         print(f"[info] Reranker enabled (fetch_k={rerank_fetch_k})")
+    ctx_flags = []
+    if context_dedup: ctx_flags.append("dedup")
+    if context_max_tokens: ctx_flags.append(f"budget={context_max_tokens}")
+    if context_reorder: ctx_flags.append("reorder")
+    if ctx_flags:
+        print(f"[info] Context engineering: {','.join(ctx_flags)}")
 
     def real(question: str) -> RAGOutput:
         result = rag.ask(
@@ -152,6 +176,9 @@ def build_rag_callable(
             retrieval_strategy=retrieval_strategy,
             rerank=rerank,
             rerank_fetch_k=rerank_fetch_k,
+            deduplicate_context=context_dedup,
+            reorder_context=context_reorder,
+            max_context_tokens=context_max_tokens,
         )
         return RAGOutput(
             answer=result.get("answer", ""),
@@ -211,6 +238,9 @@ def main() -> int:
             retrieval_strategy=args.retrieval,
             rerank=args.rerank,
             rerank_fetch_k=args.rerank_fetch_k,
+            context_dedup=args.context_dedup,
+            context_reorder=args.context_reorder,
+            context_max_tokens=args.context_max_tokens,
         )
 
     evaluators = build_evaluators(layer_set, rag_obj=rag_obj, with_judge=args.with_judge)
