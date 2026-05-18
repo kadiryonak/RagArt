@@ -8,7 +8,10 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from langchain.schema import Document
+try:
+    from langchain_core.documents import Document
+except ImportError:
+    from langchain.schema import Document
 
 from src.utils import get_logger, StatusEmoji
 

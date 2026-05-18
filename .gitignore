@@ -117,3 +117,8 @@ models/
 # Generated evaluation reports
 tests/evaluation/reports/*.md
 tests/evaluation/reports/*.json
+
+# But keep frozen reference baselines
+!tests/evaluation/baselines/
+!tests/evaluation/baselines/*.md
+!tests/evaluation/baselines/*.json
