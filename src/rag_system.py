@@ -17,7 +17,7 @@ except ImportError:
 
 from src.document_loader import JSONDocumentLoader, create_sample_data
 from src.embeddings import EmbeddingManager
-from src.llm_providers import BaseLLMProvider, LLMProviderFactory
+from src.llm_providers import BaseLLMProvider, LLMProviderFactory, LocalProvider
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
 
 logger = get_logger(__name__)
@@ -244,7 +244,14 @@ class TurkishRAGSystem:
         
         return total_score / len(documents)
     
-    def ask(self, question: str, k: int = 5) -> Dict[str, Any]:
+    def ask(
+        self,
+        question: str,
+        k: int = 5,
+        *,
+        llm_provider: Optional[BaseLLMProvider] = None,
+        llm_params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
         
@@ -282,7 +289,10 @@ class TurkishRAGSystem:
             # Check if we have sufficient context
             if not relevant_docs or relevance_score < self.RELEVANCE_THRESHOLD:
                 logger.info(f"{StatusEmoji.INFO} Insufficient context, using fallback...")
-                return self._fallback_response(question, relevance_score)
+                return self._fallback_response(
+                    question, relevance_score,
+                    llm_provider=llm_provider, llm_params=llm_params,
+                )
             
             # Build context from documents
             context_parts = []
@@ -298,10 +308,12 @@ class TurkishRAGSystem:
                 question=question
             )
             
-            logger.info(f"{StatusEmoji.ROBOT} Generating response ({self.model_type})...")
-            
-            # Get LLM response
-            answer = self.llm_provider.generate(full_prompt)
+            provider = llm_provider or self.llm_provider
+            provider_label = getattr(provider, "model", self.model_type)
+            logger.info(f"{StatusEmoji.ROBOT} Generating response ({provider_label})...")
+
+            # Get LLM response (with optional per-request param override)
+            answer = provider.generate(full_prompt, **(llm_params or {}))
             
             # Return result
             return {
@@ -330,20 +342,31 @@ class TurkishRAGSystem:
                 "source": "error"
             }
     
-    def _fallback_response(self, question: str, relevance_score: float) -> Dict[str, Any]:
+    def _fallback_response(
+        self,
+        question: str,
+        relevance_score: float,
+        *,
+        llm_provider: Optional[BaseLLMProvider] = None,
+        llm_params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Generate a fallback response when RAG context is insufficient.
-        
+
         Args:
             question: The user's question
             relevance_score: The relevance score that triggered fallback
-            
+            llm_provider: Optional per-request provider override
+            llm_params: Optional per-request LLM param overrides
+
         Returns:
             Response dictionary
         """
-        if self.model_type in ("deepseek", "openai") and self.api_key:
-            # Use LLM for general knowledge
-            general_answer = self.llm_provider.generate_general(question)
+        provider = llm_provider or self.llm_provider
+        # Local fallback provider does not produce general answers
+        is_cloud = not isinstance(provider, LocalProvider)
+        if is_cloud:
+            general_answer = provider.generate_general(question, **(llm_params or {}))
             
             # Get data summary
             data_summary = self._get_data_summary()

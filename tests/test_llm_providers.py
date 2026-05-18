@@ -29,7 +29,7 @@ class TestDeepSeekProvider:
         
         assert provider.api_key == "test-key"
         assert provider.model == "deepseek-chat"
-        assert provider.temperature == 0.1
+        assert provider.defaults["temperature"] == 0.1
     
     @patch("requests.post")
     def test_generate_success(self, mock_post):
@@ -78,7 +78,7 @@ class TestOpenAIProvider:
         provider = OpenAIProvider(api_key="test-key")
         
         assert provider.api_key == "test-key"
-        assert provider.model == "gpt-3.5-turbo"
+        assert provider.model == "gpt-4o-mini"
     
     @patch("requests.post")
     def test_generate_success(self, mock_post):
@@ -103,7 +103,7 @@ class TestOllamaProvider:
         """Test provider initialization."""
         provider = OllamaProvider()
         
-        assert provider.model == "llama2:7b"
+        assert provider.model == "llama3.1:8b"
         assert provider.timeout == 60
     
     def test_custom_model(self):

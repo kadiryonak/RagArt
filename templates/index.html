@@ -803,6 +803,196 @@
             }
         }
 
+        /* Settings modal */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(20, 18, 16, 0.55);
+            backdrop-filter: blur(3px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            padding: 16px;
+        }
+
+        .modal-backdrop.open {
+            display: flex;
+            animation: fadeIn 0.15s ease;
+        }
+
+        .modal {
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 580px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 18px 22px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--text);
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+            display: grid;
+            place-items: center;
+        }
+
+        .modal-close:hover {
+            background: var(--surface-hover);
+            color: var(--text);
+        }
+
+        .modal-body {
+            padding: 18px 22px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 14px 22px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            background: var(--surface);
+            border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+
+        .form-label .value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--accent);
+            background: var(--accent-soft);
+            padding: 1px 8px;
+            border-radius: 4px;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
+        .form-input,
+        .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-family: inherit;
+            color: var(--text);
+            transition: border-color 0.15s ease;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-range {
+            width: 100%;
+            accent-color: var(--accent);
+            height: 4px;
+        }
+
+        .form-section {
+            border-top: 1px solid var(--border);
+            margin-top: 16px;
+            padding-top: 16px;
+        }
+
+        .form-section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .key-input-wrap {
+            position: relative;
+        }
+
+        .key-toggle {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            font-size: 11px;
+        }
+
+        .key-toggle:hover { color: var(--accent); }
+
+        .key-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11.5px;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+
+        .key-status.set {
+            background: var(--success-soft);
+            color: var(--success);
+        }
+
+        .key-status.unset {
+            background: var(--warning-soft);
+            color: var(--warning);
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             body {
@@ -865,6 +1055,13 @@
                 </div>
             </div>
             <div class="header-actions">
+                <button class="theme-toggle" id="settingsToggle" aria-label="Settings" title="Ayarlar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                </button>
                 <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Tema değiştir">
                     <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -1028,6 +1225,68 @@
         </footer>
     </div>
 
+    <!-- Settings modal -->
+    <div class="modal-backdrop" id="settingsModal">
+        <div class="modal" role="dialog" aria-labelledby="settingsTitle">
+            <div class="modal-header">
+                <h2 id="settingsTitle">Ayarlar</h2>
+                <button class="modal-close" id="settingsClose" aria-label="Kapat">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="providerSelect">
+                        Sağlayıcı (Provider)
+                        <span class="key-status unset" id="keyStatus">Yapılandırılmadı</span>
+                    </label>
+                    <select id="providerSelect" class="form-select"></select>
+                    <div class="form-hint" id="providerHint"></div>
+                </div>
+
+                <div class="form-group" id="apiKeyGroup">
+                    <label class="form-label" for="apiKeyInput">
+                        API Anahtarı
+                        <span class="form-hint" style="margin: 0; font-size: 11px;">
+                            sadece tarayıcıda saklanır
+                        </span>
+                    </label>
+                    <div class="key-input-wrap">
+                        <input type="password" id="apiKeyInput" class="form-input"
+                               placeholder="sk-..." autocomplete="off">
+                        <button type="button" class="key-toggle" id="keyVisibilityToggle">
+                            göster
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="modelInput">
+                        Model
+                        <span class="form-hint" style="margin: 0; font-size: 11px;">
+                            boş = sağlayıcı default'u
+                        </span>
+                    </label>
+                    <input type="text" id="modelInput" class="form-input"
+                           placeholder="örn. llama-3.3-70b-versatile">
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">LLM Parametreleri</div>
+                    <div id="llmParamsContainer"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="settingsReset">Sıfırla</button>
+                <button class="btn btn-primary" id="settingsSave" style="width: auto; margin-top: 0;">Kaydet</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ---------- Theme management ----------
         const THEME_KEY = 'ragart-theme';
@@ -1055,6 +1314,196 @@
         });
 
         initTheme();
+
+        // ---------- Settings management (BYOK) ----------
+        const SETTINGS_KEY = 'ragart-settings';
+        let settingsSchema = null;
+        let userSettings = loadSettings();
+
+        function loadSettings() {
+            try {
+                const raw = localStorage.getItem(SETTINGS_KEY);
+                if (!raw) return defaultSettings();
+                return { ...defaultSettings(), ...JSON.parse(raw) };
+            } catch {
+                return defaultSettings();
+            }
+        }
+
+        function defaultSettings() {
+            return { provider: '', apiKey: '', model: '', llmParams: {} };
+        }
+
+        function saveSettings() {
+            // We persist everything (including the key) only in localStorage; never sent
+            // anywhere except per-request headers. User can clear in browser dev tools.
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(userSettings));
+            updateKeyStatus();
+        }
+
+        function updateKeyStatus() {
+            const el = document.getElementById('keyStatus');
+            if (!el) return;
+            if (!userSettings.provider) {
+                el.textContent = 'Yapılandırılmadı';
+                el.className = 'key-status unset';
+                return;
+            }
+            const providerSpec = settingsSchema?.providers.find(p => p.id === userSettings.provider);
+            if (providerSpec?.needs_key && !userSettings.apiKey) {
+                el.textContent = 'Key eksik';
+                el.className = 'key-status unset';
+            } else {
+                el.textContent = userSettings.provider;
+                el.className = 'key-status set';
+            }
+        }
+
+        function buildAuthHeaders() {
+            const h = {};
+            if (userSettings.provider) h['X-Provider'] = userSettings.provider;
+            if (userSettings.apiKey) h['X-API-Key'] = userSettings.apiKey;
+            if (userSettings.model) h['X-Model'] = userSettings.model;
+            const params = userSettings.llmParams || {};
+            if (Object.keys(params).length > 0) {
+                h['X-LLM-Params'] = JSON.stringify(params);
+            }
+            return h;
+        }
+
+        async function loadSettingsSchema() {
+            try {
+                const r = await fetch('/settings/schema');
+                settingsSchema = await r.json();
+                buildSettingsUI();
+                updateKeyStatus();
+            } catch (e) {
+                console.error('Settings schema load failed', e);
+            }
+        }
+
+        function buildSettingsUI() {
+            const sel = document.getElementById('providerSelect');
+            sel.innerHTML = '<option value="">(sunucu varsayılanı)</option>' +
+                settingsSchema.providers
+                    .map(p => `<option value="${p.id}">${p.id}${p.needs_key ? ' (key gerekli)' : ''}</option>`)
+                    .join('');
+            sel.value = userSettings.provider || '';
+            renderProviderControls();
+            sel.addEventListener('change', () => {
+                userSettings.provider = sel.value;
+                userSettings.llmParams = {}; // params provider'a özel
+                renderProviderControls();
+                updateKeyStatus();
+            });
+        }
+
+        function renderProviderControls() {
+            const apiKeyGroup = document.getElementById('apiKeyGroup');
+            const hint = document.getElementById('providerHint');
+            const container = document.getElementById('llmParamsContainer');
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            const modelInput = document.getElementById('modelInput');
+
+            const pid = userSettings.provider;
+            const spec = settingsSchema.providers.find(p => p.id === pid);
+
+            if (!pid) {
+                apiKeyGroup.style.display = 'none';
+                hint.textContent = 'Sağlayıcı seçilmezse sunucudaki varsayılan kullanılır.';
+                container.innerHTML = '<p class="form-hint">Bir sağlayıcı seçin.</p>';
+                modelInput.placeholder = '';
+                return;
+            }
+
+            // API key group: only for providers that need a key
+            apiKeyGroup.style.display = spec.needs_key ? 'block' : 'none';
+            apiKeyInput.value = userSettings.apiKey || '';
+
+            // Model placeholder
+            modelInput.value = userSettings.model || '';
+            modelInput.placeholder = spec.default_model;
+
+            hint.textContent = spec.needs_key
+                ? `${pid}: API anahtarınız sadece tarayıcıda saklanır, her istekte header ile yollanır.`
+                : `${pid}: API anahtarı gerekmez (yerel sağlayıcı).`;
+
+            // Build param controls
+            container.innerHTML = '';
+            if (Object.keys(spec.params).length === 0) {
+                container.innerHTML = '<p class="form-hint">Bu sağlayıcı için ayarlanabilir parametre yok.</p>';
+                return;
+            }
+            Object.entries(spec.params).forEach(([name, p]) => {
+                const current = userSettings.llmParams[name] ?? p.default;
+                const desc = settingsSchema.param_descriptions_tr[name] || '';
+                const wrap = document.createElement('div');
+                wrap.className = 'form-group';
+                const isFloat = p.type === 'float';
+                wrap.innerHTML = `
+                    <label class="form-label">
+                        ${name}
+                        <span class="value" id="val-${name}">${current}</span>
+                    </label>
+                    <input type="range" class="form-range" data-param="${name}"
+                           min="${p.min}" max="${p.max}" step="${p.step}" value="${current}">
+                    <div class="form-hint">${desc} <em>(${p.min}–${p.max})</em></div>
+                `;
+                container.appendChild(wrap);
+                const input = wrap.querySelector('input');
+                const valEl = wrap.querySelector('.value');
+                input.addEventListener('input', () => {
+                    const v = isFloat ? parseFloat(input.value) : parseInt(input.value);
+                    valEl.textContent = isFloat ? v.toFixed(2) : v;
+                    userSettings.llmParams[name] = v;
+                });
+            });
+        }
+
+        // Modal open/close
+        const settingsModal = document.getElementById('settingsModal');
+        const settingsToggle = document.getElementById('settingsToggle');
+        settingsToggle.addEventListener('click', () => {
+            settingsModal.classList.add('open');
+            if (!settingsSchema) loadSettingsSchema();
+        });
+        document.getElementById('settingsClose').addEventListener('click', () => {
+            settingsModal.classList.remove('open');
+        });
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) settingsModal.classList.remove('open');
+        });
+
+        document.getElementById('settingsSave').addEventListener('click', () => {
+            userSettings.apiKey = document.getElementById('apiKeyInput').value.trim();
+            userSettings.model = document.getElementById('modelInput').value.trim();
+            saveSettings();
+            settingsModal.classList.remove('open');
+            showToast('Ayarlar kaydedildi');
+        });
+
+        document.getElementById('settingsReset').addEventListener('click', () => {
+            if (!confirm('Tüm ayarları sıfırla?')) return;
+            userSettings = defaultSettings();
+            localStorage.removeItem(SETTINGS_KEY);
+            buildSettingsUI();
+            document.getElementById('apiKeyInput').value = '';
+            document.getElementById('modelInput').value = '';
+            updateKeyStatus();
+            showToast('Ayarlar sıfırlandı');
+        });
+
+        document.getElementById('keyVisibilityToggle').addEventListener('click', () => {
+            const input = document.getElementById('apiKeyInput');
+            const btn = document.getElementById('keyVisibilityToggle');
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = 'gizle';
+            } else {
+                input.type = 'password';
+                btn.textContent = 'göster';
+            }
+        });
 
         // ---------- Tab switching ----------
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1260,7 +1709,7 @@
             try {
                 const response = await fetch('/ask', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...buildAuthHeaders() },
                     body: JSON.stringify({ question })
                 });
                 const result = await response.json();
@@ -1326,6 +1775,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             checkStatus();
             loadFiles();
+            loadSettingsSchema();
         });
     </script>
 </body>

@@ -14,8 +14,13 @@ from werkzeug.utils import secure_filename
 
 from src.rag_system import TurkishRAGSystem
 from src.document_loader import create_sample_data
+from src.llm_providers import LLMProviderFactory
 from src.utils import get_logger, StatusEmoji, setup_logging
 from config.settings import settings
+from config.settings_schema import (
+    get_settings_schema,
+    parse_request_settings,
+)
 
 # Setup logging
 setup_logging()
@@ -116,24 +121,52 @@ def get_status():
 
 @app.route("/ask", methods=["POST"])
 def ask_question():
-    """Handle question answering requests."""
+    """Handle question answering requests.
+
+    BYOK: clients may pass X-Provider / X-API-Key / X-Model / X-LLM-Params
+    headers. When set, those override the server-side defaults for this
+    single request — the server never persists the key.
+    """
     if not system_ready:
         return jsonify({
             "error": "System not ready",
             "status": system_status
         }), 503
-    
+
     try:
         data = request.get_json()
         question = data.get("question", "").strip()
-        
+
         if not question:
             return jsonify({"error": "Question cannot be empty"}), 400
-        
+
+        # Parse per-request settings from headers (BYOK)
+        req_settings = parse_request_settings(request.headers)
+        llm_override = None
+        if req_settings.provider:
+            errors = req_settings.llm_params.validate(req_settings.provider)
+            if errors:
+                return jsonify({
+                    "error": "Invalid LLM params",
+                    "details": errors,
+                }), 400
+            try:
+                llm_override = LLMProviderFactory.create(
+                    req_settings.provider,
+                    api_key=req_settings.api_key,
+                    model=req_settings.model,
+                )
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
+
         logger.info(f"{StatusEmoji.SEARCH} Question received: {question}")
-        
-        # Get answer from RAG system
-        result = rag_system.ask(question, k=settings.TOP_K_DOCUMENTS)
+
+        result = rag_system.ask(
+            question,
+            k=settings.TOP_K_DOCUMENTS,
+            llm_provider=llm_override,
+            llm_params=req_settings.llm_params.to_dict(),
+        )
         
         # Check for errors
         if result.get("source") == "error":
@@ -225,6 +258,17 @@ def get_data_info():
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/settings/schema")
+def settings_schema():
+    """Return the settings schema used by the frontend to build the UI.
+
+    No secrets here — pure metadata (provider list, param specs, defaults,
+    human-readable descriptions). The frontend reads this once on load to
+    render dropdowns and sliders.
+    """
+    return jsonify(get_settings_schema())
 
 
 @app.route("/health")
