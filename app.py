@@ -219,6 +219,9 @@ def ask_question():
             reorder_context=req_settings.reorder_context,
             max_context_tokens=req_settings.max_context_tokens,
             allow_general_knowledge_fallback=req_settings.allow_general_knowledge_fallback,
+            prompt_strategy=req_settings.prompt_strategy,
+            custom_role=req_settings.custom_role,
+            custom_prompt_template=req_settings.custom_prompt_template,
         )
         
         # Check for errors

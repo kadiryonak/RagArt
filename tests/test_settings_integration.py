@@ -25,7 +25,9 @@ def client(monkeypatch):
                  history=None, memory_strategy=None,
                  deduplicate_context=False, reorder_context=False,
                  max_context_tokens=None,
-                 allow_general_knowledge_fallback=False):
+                 allow_general_knowledge_fallback=False,
+                 prompt_strategy=None, custom_role=None,
+                 custom_prompt_template=None):
         captured["question"] = question
         captured["k"] = k
         captured["llm_provider"] = llm_provider
@@ -39,6 +41,9 @@ def client(monkeypatch):
         captured["reorder_context"] = reorder_context
         captured["max_context_tokens"] = max_context_tokens
         captured["allow_general_knowledge_fallback"] = allow_general_knowledge_fallback
+        captured["prompt_strategy"] = prompt_strategy
+        captured["custom_role"] = custom_role
+        captured["custom_prompt_template"] = custom_prompt_template
         return {
             "question": question,
             "answer": "stub cevap",

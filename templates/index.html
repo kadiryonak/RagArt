@@ -1912,6 +1912,37 @@
                 </div>
 
                 <div class="form-section">
+                    <div class="form-section-title">Prompt Stratejisi</div>
+                    <div class="form-group">
+                        <label class="form-label" for="promptStrategySelect">Strateji</label>
+                        <select id="promptStrategySelect" class="form-select"></select>
+                        <div class="form-hint" id="promptStrategyHint"></div>
+                    </div>
+                    <div class="form-group" id="customRoleGroup" style="display: none;">
+                        <label class="form-label" for="customRoleInput">
+                            Uzman Rolü
+                            <span class="form-hint" style="margin: 0; font-size: 11px;">
+                                örn. "20 yıllık deneyimli bir hukuk danışmanısın..."
+                            </span>
+                        </label>
+                        <textarea id="customRoleInput" class="question-input"
+                                  style="min-height: 70px;" maxlength="1500"
+                                  placeholder="Sen [domain]'da uzman bir asistansın..."></textarea>
+                    </div>
+                    <div class="form-group" id="customTemplateGroup" style="display: none;">
+                        <label class="form-label" for="customTemplateInput">
+                            Özel Prompt Template
+                            <span class="form-hint" style="margin: 0; font-size: 11px;">
+                                {question}, {context}, {memory_context}
+                            </span>
+                        </label>
+                        <textarea id="customTemplateInput" class="question-input"
+                                  style="min-height: 120px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px;"
+                                  placeholder="Sen Türkçe konuşan bir asistansın.&#10;BAĞLAM: {context}&#10;SORU: {question}&#10;YANIT:"></textarea>
+                    </div>
+                </div>
+
+                <div class="form-section">
                     <div class="form-section-title">Retrieval Stratejisi</div>
                     <div class="form-group">
                         <label class="form-label" for="retrievalSelect">Yöntem</label>
@@ -2105,6 +2136,9 @@
                 contextReorder: false,
                 contextMaxTokens: null,
                 allowGeneralKb: false,
+                promptStrategy: 'direct',
+                customRole: '',
+                customPromptTemplate: '',
             };
         }
 
@@ -2243,6 +2277,19 @@
             if (userSettings.allowGeneralKb) {
                 h['X-Allow-General-Knowledge'] = 'true';
             }
+            if (userSettings.promptStrategy && userSettings.promptStrategy !== 'direct') {
+                h['X-Prompt-Strategy'] = userSettings.promptStrategy;
+            }
+            // Custom role / template may contain Turkish characters; base64
+            // the UTF-8 bytes the same way X-Conversation-History does.
+            if (userSettings.promptStrategy === 'role_based' && userSettings.customRole) {
+                const utf8 = unescape(encodeURIComponent(userSettings.customRole));
+                h['X-Custom-Role'] = 'b64:' + btoa(utf8);
+            }
+            if (userSettings.promptStrategy === 'custom' && userSettings.customPromptTemplate) {
+                const utf8 = unescape(encodeURIComponent(userSettings.customPromptTemplate));
+                h['X-Custom-Prompt'] = 'b64:' + btoa(utf8);
+            }
             if (userSettings.memoryStrategy && userSettings.memoryStrategy !== 'none') {
                 h['X-Memory-Strategy'] = userSettings.memoryStrategy;
                 if (conversationHistory.length > 0) {
@@ -2325,6 +2372,42 @@
             maxTokEl.addEventListener('change', () => {
                 const v = parseInt(maxTokEl.value, 10);
                 userSettings.contextMaxTokens = (!isNaN(v) && v >= 64) ? v : null;
+            });
+
+            // Prompt strategy selector
+            const psel = document.getElementById('promptStrategySelect');
+            const phint = document.getElementById('promptStrategyHint');
+            const customRoleGroup = document.getElementById('customRoleGroup');
+            const customTemplateGroup = document.getElementById('customTemplateGroup');
+            const customRoleInput = document.getElementById('customRoleInput');
+            const customTemplateInput = document.getElementById('customTemplateInput');
+            const promptStrategies = settingsSchema.prompt_strategies || [];
+            psel.innerHTML = promptStrategies
+                .map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
+                .join('');
+            psel.value = userSettings.promptStrategy || 'direct';
+            customRoleInput.value = userSettings.customRole || '';
+            customTemplateInput.value = userSettings.customPromptTemplate || '';
+
+            const updatePromptStrategyUI = () => {
+                const sel = promptStrategies.find(x => x.id === psel.value);
+                phint.innerHTML = sel ? escapeHtml(sel.description) : '';
+                if (sel && sel.is_multi_call) {
+                    phint.innerHTML += ' <strong>(birden çok LLM çağrısı)</strong>';
+                }
+                customRoleGroup.style.display = psel.value === 'role_based' ? 'block' : 'none';
+                customTemplateGroup.style.display = psel.value === 'custom' ? 'block' : 'none';
+            };
+            updatePromptStrategyUI();
+            psel.addEventListener('change', () => {
+                userSettings.promptStrategy = psel.value;
+                updatePromptStrategyUI();
+            });
+            customRoleInput.addEventListener('input', () => {
+                userSettings.customRole = customRoleInput.value;
+            });
+            customTemplateInput.addEventListener('input', () => {
+                userSettings.customPromptTemplate = customTemplateInput.value;
             });
 
             // Hallucination opt-in (safe default = OFF)

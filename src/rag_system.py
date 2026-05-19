@@ -40,6 +40,15 @@ from src.context import (
     RedundancyFilter,
     TokenBudgetTrimmer,
 )
+from src.prompt_strategies import (
+    BasePromptStrategy,
+    CustomStrategy,
+    DirectStrategy,
+    PromptStrategyFactory,
+    RoleBasedStrategy,
+    StrategyContext,
+)
+from src.prompt_strategies.multi_query import MultiQueryStrategy
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
 
 logger = get_logger(__name__)
@@ -452,6 +461,52 @@ class TurkishRAGSystem:
             )
         return NoMemory()
 
+    def _fuse_retrievals(self, queries, k, retrieve_fn):
+        """Multi-query RRF: her query'den retrieve et, rank-based birleştir.
+
+        K_RRF=60 (Microsoft paper'daki ampirik default). Sonuçların kimliği
+        (source + page_content hash) üzerinden dedup yapılır.
+        """
+        K_RRF = 60
+        scores: dict = {}
+        docs_by_id: dict = {}
+        for q in queries:
+            ds = retrieve_fn(q, k * 2)  # over-sample
+            for rank, doc in enumerate(ds):
+                doc_id = (
+                    doc.metadata.get("source", "?"),
+                    doc.metadata.get("item_index", -1),
+                    hash(doc.page_content[:200]) & 0xFFFFFFFF,
+                )
+                scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (K_RRF + rank + 1)
+                docs_by_id.setdefault(doc_id, doc)
+        ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+        return [docs_by_id[did] for did, _ in ranked[:k]]
+
+    def _resolve_prompt_strategy(
+        self,
+        name: Optional[str],
+        *,
+        custom_role: Optional[str] = None,
+        custom_prompt_template: Optional[str] = None,
+    ) -> BasePromptStrategy:
+        """Strategy adından instance üret.
+
+        Special cases:
+            - 'role_based' → user-provided role is injected
+            - 'custom'     → user-provided template is injected
+            - None / unknown → DirectStrategy (safe default)
+        """
+        key = (name or "direct").strip().lower()
+        if key == "role_based":
+            return RoleBasedStrategy(role=custom_role)
+        if key == "custom":
+            return CustomStrategy(template=custom_prompt_template)
+        if PromptStrategyFactory.is_available(key):
+            return PromptStrategyFactory.create(key)
+        # Unknown / mistyped strategy → fall back rather than 500
+        return DirectStrategy()
+
     def _build_context_chain(
         self,
         *,
@@ -495,6 +550,9 @@ class TurkishRAGSystem:
         reorder_context: bool = False,
         max_context_tokens: Optional[int] = None,
         allow_general_knowledge_fallback: bool = False,
+        prompt_strategy: Optional[str] = None,
+        custom_role: Optional[str] = None,
+        custom_prompt_template: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
@@ -537,20 +595,50 @@ class TurkishRAGSystem:
                 context_label_parts.append("reorder")
             context_label = "+ctx[" + ",".join(context_label_parts) + "]" if context_label_parts else ""
 
-            # Search for relevant documents
+            # Resolve prompt strategy + build the strategy execution
+            # context that multi-step strategies will need.
+            strategy = self._resolve_prompt_strategy(
+                prompt_strategy,
+                custom_role=custom_role,
+                custom_prompt_template=custom_prompt_template,
+            )
+            provider = llm_provider or self.llm_provider
+
+            def _retrieve(q: str, kk: int):
+                return self.search(
+                    q, k=kk, strategy=retrieval_strategy,
+                    rerank=rerank, rerank_fetch_k=rerank_fetch_k,
+                    context_chain=context_chain,
+                )
+
+            strategy_ctx = StrategyContext(
+                llm=provider,
+                retrieve_fn=_retrieve,
+                embed_fn=self.embedding_manager.embed_query,
+                llm_params=dict(llm_params or {}),
+            )
+
+            # Search for relevant documents — multi-query strategies expand
+            # the original question into N variants, retrieve per variant
+            # and fuse with RRF; single-query strategies just retrieve once.
             strategy_label = (
                 (retrieval_strategy or "auto")
                 + ("+rerank" if rerank else "")
                 + context_label
+                + f"+prompt[{strategy.name}]"
             )
             logger.info(
                 f"{StatusEmoji.SEARCH} Searching ({strategy_label}) for: '{question}'..."
             )
-            relevant_docs = self.search(
-                question, k=k, strategy=retrieval_strategy,
-                rerank=rerank, rerank_fetch_k=rerank_fetch_k,
-                context_chain=context_chain,
-            )
+
+            if strategy.is_multi_query:
+                variants = strategy.generate_query_variations(question, strategy_ctx)
+                logger.info(
+                    f"{StatusEmoji.INFO} Multi-query expanded to {len(variants)} variants"
+                )
+                relevant_docs = self._fuse_retrievals(variants, k, _retrieve)
+            else:
+                relevant_docs = _retrieve(question, k)
             
             # Calculate relevance score
             relevance_score = self.calculate_relevance_score(question, relevant_docs)
@@ -577,25 +665,20 @@ class TurkishRAGSystem:
             memory = self._build_memory(memory_strategy, llm_for_summary=llm_provider)
             memory_context = memory.apply(history or [], question).strip()
 
-            # Pick the right prompt template based on whether we have memory
-            if memory_context:
-                full_prompt = TURKISH_SYSTEM_PROMPT_WITH_MEMORY.format(
-                    memory_context=memory_context,
-                    context=context,
-                    question=question,
-                )
-            else:
-                full_prompt = self.system_prompt.format(
-                    context=context,
-                    question=question,
-                )
-            
-            provider = llm_provider or self.llm_provider
             provider_label = getattr(provider, "model", self.model_type)
-            logger.info(f"{StatusEmoji.ROBOT} Generating response ({provider_label})...")
+            logger.info(
+                f"{StatusEmoji.ROBOT} Generating ({provider_label}) "
+                f"via strategy={strategy.name}..."
+            )
 
-            # Get LLM response (with optional per-request param override)
-            answer = provider.generate(full_prompt, **(llm_params or {}))
+            # Strategy owns the prompt construction AND any extra LLM calls
+            # (CoT extracts the YANIT block; multi-step ones can override).
+            answer = strategy.execute(
+                strategy_ctx,
+                question=question,
+                context=context,
+                memory_context=memory_context,
+            )
             
             # Return result
             return {
@@ -615,6 +698,7 @@ class TurkishRAGSystem:
                 "retrieval_strategy": strategy_label,
                 "memory_strategy": memory_strategy or "none",
                 "memory_used": bool(memory_context),
+                "prompt_strategy": strategy.name,
             }
             
         except Exception as e:
