@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "name": "Default",
+  "color": "#6d5cf0",
+  "description": "Wikipedia örnek bilgi tabanı + ilk kullanım için.",
+  "vector_db": "chroma",
+  "created_at": 1779154956.9085019,
+  "file_count": 57,
+  "last_modified": 1779155073.50827
+}

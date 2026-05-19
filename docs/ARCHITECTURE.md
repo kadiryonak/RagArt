@@ -361,7 +361,72 @@ class BaseAgent(ABC):
 - [ ] Pipeline config (YAML) — `feat/pipeline-config`
 - [ ] E2E Playwright suite — `test/e2e-playwright`
 
+### Tamamlanan (workspaces + vector DB)
+- [x] **Workspaces** (NotebookLM-style) — `feat/workspaces-and-vector-db`
+  - Her workspace izole: kendi dosya klasörü + kendi vector DB
+  - `data/workspaces/{id}/` + `data/workspaces/{id}/meta.json`
+  - Lazy RAG-per-workspace cache; embedder paylaşılır
+  - Legacy `data/*.json` otomatik default workspace'e migrate
+- [x] **BaseVectorStore plugin family** — Chroma + Qdrant adapters
+  - Plugin sözleşmesi: `upsert_documents`, `similarity_search`, `count`,
+    `delete_collection`
+  - VectorStoreFactory ile UI dropdown'u otomatik üretiliyor
+  - Yeni DB eklemek: BaseVectorStore implement et + Factory'ye register
+
+### Sıradaki — Prompt engineering hooks (mimari, ileride implementasyon)
+
+**Vizyon:** Kullanıcı UI'dan farklı prompt stratejilerini seçsin
+(zero-shot, few-shot, chain-of-thought, self-consistency, ReAct...) veya
+kendi system prompt'larını yönetebilsin.
+
+**Plugin contract (taslak):**
+```python
+class BasePromptStrategy(ABC):
+    name: str
+    description_tr: str
+
+    @abstractmethod
+    def build(
+        self,
+        *,
+        question: str,
+        context: str,
+        memory_context: str = "",
+        history: list = None,
+    ) -> str:
+        """Final LLM prompt string'i üret."""
+
+    def metadata(self) -> dict:
+        """UI için açıklayıcı bilgi (temperature önerisi vb.)"""
+        return {}
+```
+
+**Önceden tanımlı stratejiler (ileride):**
+| ID | İsim | Açıklama |
+|---|---|---|
+| `direct` | Direkt cevap | Mevcut TURKISH_SYSTEM_PROMPT (default) |
+| `few_shot` | Birkaç örnekli | Verilen 2-3 örnek Q&A + sonra asıl soru |
+| `cot` | Adım adım düşün (CoT) | "Önce mantığını yaz, sonra cevabı ver" |
+| `self_consistency` | Tutarlılık | N×CoT cevap üret, çoğunluğu seç |
+| `react` | ReAct (Reasoning + Acting) | Tool routing için (Agentic RAG'da kullanılır) |
+| `custom` | Kullanıcı tanımlı | UI'dan Markdown template yazılabilir, `{context}` `{question}` placeholder'ları |
+
+**API tasarımı:**
+- Header: `X-Prompt-Strategy: cot`
+- Header: `X-Custom-Prompt: <base64-encoded template>` (custom için)
+- Workspace meta'sına opsiyonel `default_prompt_strategy: str` alanı
+
+**Eval etkisi (tahmin):**
+- CoT: medium/hard kategorisinde L4 (judge) skorunda +5-10%
+- Few-shot: easy kategorisinde L3 (lexical) +10-15% (referans örneğine yakın yazım)
+- Self-consistency: faithfulness +5% (multi-vote effect)
+
+**Şu an'ki implementation durumu:** YOK. Sadece architecture doc'ta plan.
+Plugin pattern'i hazır olduğu için (BaseRetriever, BaseMemory, vs.) yeni
+plugin family eklemek 1-2 saatlik iş.
+
 ### Uzun vade
+- [ ] **Prompt engineering strategies** — `feat/prompt-strategies` (bu doc'ta sketch'i var)
 - [ ] Agent loop (ReAct + tools) — `feat/agent`
 - [ ] Parent-child retrieval — `feat/parent-child`
 - [ ] Eval dashboard (UI) — `feat/eval-dashboard`

@@ -1018,6 +1018,213 @@
             color: var(--warning);
         }
 
+        /* Workspaces landing */
+        .landing {
+            padding: 32px 28px;
+        }
+
+        .landing-header {
+            margin-bottom: 24px;
+        }
+
+        .landing-header h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            margin: 0 0 4px;
+            letter-spacing: -0.01em;
+        }
+
+        .landing-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .ws-card {
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent);
+            border-radius: var(--radius);
+            padding: 18px 18px 14px;
+            cursor: pointer;
+            transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+            display: flex;
+            flex-direction: column;
+            min-height: 130px;
+            position: relative;
+        }
+
+        .ws-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+            border-color: var(--border-strong);
+        }
+
+        .ws-card-title {
+            font-weight: 600;
+            font-size: 15px;
+            color: var(--text);
+            margin: 0 0 6px;
+            line-height: 1.35;
+            padding-right: 24px;
+        }
+
+        .ws-card-desc {
+            color: var(--text-secondary);
+            font-size: 12.5px;
+            line-height: 1.5;
+            flex: 1;
+        }
+
+        .ws-card-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11.5px;
+            color: var(--text-muted);
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+
+        .ws-card-meta .meta-badge {
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+
+        .ws-card-delete {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            opacity: 0;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: opacity 0.15s ease, background 0.15s ease;
+        }
+
+        .ws-card:hover .ws-card-delete {
+            opacity: 1;
+        }
+
+        .ws-card-delete:hover {
+            background: var(--danger-soft);
+            color: var(--danger);
+        }
+
+        .ws-card-new {
+            border: 2px dashed var(--border-strong);
+            border-left: 2px dashed var(--border-strong);
+            background: transparent;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .ws-card-new:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .ws-card-new svg {
+            width: 28px;
+            height: 28px;
+            margin-bottom: 6px;
+        }
+
+        .ws-card-new span {
+            font-size: 13.5px;
+            font-weight: 500;
+        }
+
+        /* Back-to-landing button */
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--surface);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 6px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-right: 12px;
+            transition: all 0.15s ease;
+        }
+
+        .back-btn:hover {
+            background: var(--surface-hover);
+            color: var(--text);
+            border-color: var(--border-strong);
+        }
+
+        .back-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .ws-badge-active {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 500;
+            background: var(--accent-soft);
+            color: var(--accent);
+            margin-left: 8px;
+        }
+
+        .ws-badge-active::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* Color picker for create modal */
+        .color-picker {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .color-swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.12s ease;
+        }
+
+        .color-swatch:hover {
+            transform: scale(1.1);
+        }
+
+        .color-swatch.selected {
+            border-color: var(--text);
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             body {
@@ -1076,10 +1283,21 @@
                 </div>
                 <div class="brand-text">
                     <h1>RagArt</h1>
-                    <p>Turkish RAG System · Knowledge-Driven QA</p>
+                    <p>
+                        <span id="brandSubtitle">Turkish RAG System · Knowledge-Driven QA</span>
+                        <span id="activeWorkspaceBadge" class="ws-badge-active" style="display: none;"></span>
+                    </p>
                 </div>
             </div>
             <div class="header-actions">
+                <button class="back-btn" id="backToLanding" style="display: none;"
+                        aria-label="Çalışma alanlarına dön" title="Çalışma alanları">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                    Alanlar
+                </button>
                 <button class="theme-toggle" id="settingsToggle" aria-label="Settings" title="Ayarlar">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -1101,6 +1319,23 @@
                 </button>
             </div>
         </header>
+
+        <!-- Landing view — workspace cards -->
+        <section id="landing-view" class="landing" style="display: none;">
+            <div class="landing-header">
+                <h2>Çalışma Alanların</h2>
+                <p>
+                    Her alan kendi dosyalarına ve vektör veritabanına sahiptir.
+                    NotebookLM gibi farklı projeler için ayrı bilgi tabanı tut.
+                </p>
+            </div>
+            <div class="workspace-grid" id="workspaceGrid">
+                <!-- Cards rendered by JS -->
+            </div>
+        </section>
+
+        <!-- App view wrapper — everything below becomes per-workspace -->
+        <div id="app-view">
 
         <!-- Tabs -->
         <nav class="tabs">
@@ -1248,6 +1483,51 @@
                 Dosya: <span class="mono" id="fileCount">—</span>
             </div>
         </footer>
+
+        </div><!-- /#app-view -->
+    </div>
+
+    <!-- Workspace create modal -->
+    <div class="modal-backdrop" id="createWorkspaceModal">
+        <div class="modal" role="dialog" aria-labelledby="createWsTitle">
+            <div class="modal-header">
+                <h2 id="createWsTitle">Yeni Çalışma Alanı</h2>
+                <button class="modal-close" id="createWsClose" aria-label="Kapat">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="newWsName">Ad</label>
+                    <input type="text" id="newWsName" class="form-input"
+                           placeholder="örn. CV Analizi" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="newWsDesc">
+                        Açıklama (opsiyonel)
+                    </label>
+                    <input type="text" id="newWsDesc" class="form-input"
+                           placeholder="kısa açıklama">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Renk</label>
+                    <div class="color-picker" id="colorPicker"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="newWsVectorDb">Vektör Veritabanı</label>
+                    <select id="newWsVectorDb" class="form-select"></select>
+                    <div class="form-hint" id="newWsVectorDbHint"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="createWsCancel">İptal</button>
+                <button class="btn btn-primary" id="createWsSubmit" style="width: auto; margin-top: 0;">Oluştur</button>
+            </div>
+        </div>
     </div>
 
     <!-- Settings modal -->
@@ -1575,6 +1855,9 @@
 
         function buildAuthHeaders() {
             const h = {};
+            // Always announce the active workspace so the backend routes
+            // /upload, /reindex, /ask etc. to the right RAG instance.
+            if (currentWorkspaceId) h['X-Workspace-Id'] = currentWorkspaceId;
             if (userSettings.provider) h['X-Provider'] = userSettings.provider;
             const key = currentApiKey();
             if (key) h['X-API-Key'] = key;
@@ -2167,11 +2450,258 @@
             }
         }
 
-        // ---------- Init ----------
-        document.addEventListener('DOMContentLoaded', () => {
-            checkStatus();
+        // ---------- Workspaces ----------
+        // Each workspace is an isolated knowledge base (own files, own
+        // vector DB). The active id is persisted so a reload brings the
+        // user back to where they were. The empty string means "show the
+        // landing page" — user hasn't picked one yet (first visit).
+        const WORKSPACE_KEY = 'ragart-active-workspace';
+        let currentWorkspaceId = localStorage.getItem(WORKSPACE_KEY) || '';
+        let workspaceList = [];
+        let vectorStoreOptions = [];
+        const COLOR_OPTIONS = [
+            '#6d5cf0', '#4f9a6a', '#c69143', '#c25a5a',
+            '#4a90c2', '#9b6dc2', '#5fa896', '#c2965a',
+        ];
+        let selectedColor = COLOR_OPTIONS[0];
+
+        async function loadWorkspaces() {
+            try {
+                const r = await fetch('/workspaces');
+                const data = await r.json();
+                workspaceList = data.workspaces || [];
+                vectorStoreOptions = data.vector_stores || [];
+                return data;
+            } catch (e) {
+                console.error('Workspace load failed', e);
+                workspaceList = [];
+                vectorStoreOptions = [];
+                return null;
+            }
+        }
+
+        function renderWorkspaceGrid() {
+            const grid = document.getElementById('workspaceGrid');
+            if (!grid) return;
+            const cards = workspaceList.map(ws => {
+                const isDefault = ws.id === 'default';
+                const fileText = `${ws.file_count || 0} dosya`;
+                const deleteBtn = isDefault ? '' : `
+                    <button class="ws-card-delete" data-ws-delete="${escapeHtml(ws.id)}"
+                            title="Sil" aria-label="Sil">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
+                        </svg>
+                    </button>`;
+                return `
+                    <div class="ws-card" data-ws-id="${escapeHtml(ws.id)}"
+                         style="border-left-color: ${escapeHtml(ws.color || '#6d5cf0')};">
+                        ${deleteBtn}
+                        <div class="ws-card-title">${escapeHtml(ws.name)}</div>
+                        <div class="ws-card-desc">${escapeHtml(ws.description || '—')}</div>
+                        <div class="ws-card-meta">
+                            <span class="meta-badge">${(ws.vector_db || 'chroma').toUpperCase()}</span>
+                            <span>${fileText}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            const addCard = `
+                <div class="ws-card ws-card-new" id="wsCreateCard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    <span>Yeni Çalışma Alanı</span>
+                </div>
+            `;
+            grid.innerHTML = cards + addCard;
+
+            // Wire interactions
+            grid.querySelectorAll('.ws-card[data-ws-id]').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    if (e.target.closest('.ws-card-delete')) return;
+                    enterWorkspace(el.dataset.wsId);
+                });
+            });
+            grid.querySelectorAll('[data-ws-delete]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.wsDelete;
+                    if (!confirm(`'${id}' çalışma alanını ve tüm dosyalarını sil?`)) return;
+                    try {
+                        const r = await fetch(`/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                        if (!r.ok) {
+                            const body = await r.json().catch(() => ({}));
+                            showToast(body.error || 'Silinemedi', 'error');
+                            return;
+                        }
+                        if (currentWorkspaceId === id) {
+                            currentWorkspaceId = '';
+                            localStorage.removeItem(WORKSPACE_KEY);
+                        }
+                        await refreshWorkspacesUI();
+                        showToast('Çalışma alanı silindi');
+                    } catch {
+                        showToast('Silme hatası', 'error');
+                    }
+                });
+            });
+            document.getElementById('wsCreateCard')?.addEventListener('click', openCreateModal);
+        }
+
+        function enterWorkspace(wsId) {
+            currentWorkspaceId = wsId;
+            localStorage.setItem(WORKSPACE_KEY, wsId);
+            showAppView();
             loadFiles();
+            checkStatus();
+        }
+
+        function showLandingView() {
+            document.getElementById('landing-view').style.display = 'block';
+            document.getElementById('app-view').style.display = 'none';
+            document.getElementById('backToLanding').style.display = 'none';
+            document.getElementById('activeWorkspaceBadge').style.display = 'none';
+        }
+
+        function showAppView() {
+            document.getElementById('landing-view').style.display = 'none';
+            document.getElementById('app-view').style.display = '';
+            document.getElementById('backToLanding').style.display = 'inline-flex';
+            const ws = workspaceList.find(w => w.id === currentWorkspaceId);
+            const badge = document.getElementById('activeWorkspaceBadge');
+            if (ws) {
+                badge.textContent = ws.name;
+                badge.style.background = (ws.color || '#6d5cf0') + '22';
+                badge.style.color = ws.color || '#6d5cf0';
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        async function refreshWorkspacesUI() {
+            await loadWorkspaces();
+            renderWorkspaceGrid();
+            // Validate current selection — server may have deleted it
+            if (currentWorkspaceId &&
+                !workspaceList.find(w => w.id === currentWorkspaceId)) {
+                currentWorkspaceId = '';
+                localStorage.removeItem(WORKSPACE_KEY);
+            }
+            if (currentWorkspaceId) {
+                showAppView();
+            } else {
+                showLandingView();
+            }
+        }
+
+        document.getElementById('backToLanding').addEventListener('click', () => {
+            currentWorkspaceId = '';
+            localStorage.removeItem(WORKSPACE_KEY);
+            refreshWorkspacesUI();
+        });
+
+        // ----- Create modal -----
+        const createModal = document.getElementById('createWorkspaceModal');
+
+        function openCreateModal() {
+            // Reset form
+            document.getElementById('newWsName').value = '';
+            document.getElementById('newWsDesc').value = '';
+            selectedColor = COLOR_OPTIONS[0];
+            renderColorPicker();
+            renderVectorDbSelect();
+            createModal.classList.add('open');
+            setTimeout(() => document.getElementById('newWsName').focus(), 50);
+        }
+
+        function renderColorPicker() {
+            const picker = document.getElementById('colorPicker');
+            picker.innerHTML = COLOR_OPTIONS.map(c => `
+                <button type="button" class="color-swatch${c === selectedColor ? ' selected' : ''}"
+                        data-color="${c}" style="background: ${c};"
+                        aria-label="Renk ${c}"></button>
+            `).join('');
+            picker.querySelectorAll('.color-swatch').forEach(el => {
+                el.addEventListener('click', () => {
+                    selectedColor = el.dataset.color;
+                    renderColorPicker();
+                });
+            });
+        }
+
+        function renderVectorDbSelect() {
+            const sel = document.getElementById('newWsVectorDb');
+            const hint = document.getElementById('newWsVectorDbHint');
+            const opts = vectorStoreOptions.length ? vectorStoreOptions : [
+                { id: 'chroma', label: 'ChromaDB (default)',
+                  desc: 'Local, embed-only.' }
+            ];
+            sel.innerHTML = opts.map(v =>
+                `<option value="${escapeHtml(v.id)}">${escapeHtml(v.label)}</option>`
+            ).join('');
+            const updateHint = () => {
+                const v = opts.find(x => x.id === sel.value);
+                hint.textContent = v ? v.desc : '';
+            };
+            updateHint();
+            sel.onchange = updateHint;
+        }
+
+        document.getElementById('createWsClose').addEventListener('click',
+            () => createModal.classList.remove('open'));
+        document.getElementById('createWsCancel').addEventListener('click',
+            () => createModal.classList.remove('open'));
+        createModal.addEventListener('click', (e) => {
+            if (e.target === createModal) createModal.classList.remove('open');
+        });
+
+        document.getElementById('createWsSubmit').addEventListener('click', async () => {
+            const name = document.getElementById('newWsName').value.trim();
+            if (!name) {
+                showToast('İsim boş olamaz', 'error');
+                return;
+            }
+            const payload = {
+                name,
+                description: document.getElementById('newWsDesc').value.trim(),
+                color: selectedColor,
+                vector_db: document.getElementById('newWsVectorDb').value,
+            };
+            try {
+                const r = await fetch('/workspaces', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!r.ok) {
+                    const body = await r.json().catch(() => ({}));
+                    showToast(body.error || 'Oluşturulamadı', 'error');
+                    return;
+                }
+                const body = await r.json();
+                createModal.classList.remove('open');
+                showToast('Çalışma alanı oluşturuldu');
+                await loadWorkspaces();
+                enterWorkspace(body.workspace.id);
+            } catch {
+                showToast('İstek başarısız', 'error');
+            }
+        });
+
+        // ---------- Init ----------
+        document.addEventListener('DOMContentLoaded', async () => {
             loadSettingsSchema();
+            await refreshWorkspacesUI();
+            if (currentWorkspaceId) {
+                checkStatus();
+                loadFiles();
+            }
         });
     </script>
 </body>

@@ -130,3 +130,10 @@ data/*.docx
 data/*.md
 data/*.markdown
 data/*.txt
+
+# Workspace user-uploaded files — same intent, deeper path now
+data/workspaces/**/files/*.pdf
+data/workspaces/**/files/*.docx
+data/workspaces/**/files/*.md
+data/workspaces/**/files/*.markdown
+data/workspaces/**/files/*.txt

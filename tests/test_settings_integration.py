@@ -52,7 +52,17 @@ def client(monkeypatch):
     fake_rag.ask.side_effect = stub_ask
     fake_rag.model_type = "stub"
 
-    monkeypatch.setattr(app_module, "rag_system", fake_rag)
+    # Inject the fake into the workspace cache so any X-Workspace-Id
+    # (or the default) resolves to this stub instead of trying to build
+    # a real RAG (which would load the embedding model on every test).
+    from src.workspaces import DEFAULT_WORKSPACE_ID
+    app_module._rag_cache.clear()
+    app_module._rag_cache[DEFAULT_WORKSPACE_ID] = fake_rag
+
+    def get_rag_stub(_ws_id):
+        return fake_rag
+
+    monkeypatch.setattr(app_module, "get_rag_for", get_rag_stub)
     monkeypatch.setattr(app_module, "system_ready", True)
 
     app_module.app.config["TESTING"] = True
