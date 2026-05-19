@@ -14,7 +14,9 @@ Hiyerarşik tasarım:
     │   ├─ RoleBasedStrategy     (kullanıcı tanımlı uzman rolü)
     │   └─ CustomStrategy        (kullanıcı tanımlı template)
     └─ Multi-call (birden fazla LLM/retrieval çağrısı)
-        └─ MultiQueryStrategy    (N varyant üret → her biriyle ara → RRF)
+        ├─ MultiQueryStrategy    (N varyant üret → her biriyle ara → RRF)
+        ├─ HyDEStrategy          (varsayımsal doküman üret → embed → search)
+        └─ StepBackStrategy      (genel soru üret → geniş context çek)
 
 Yeni strateji eklemek için: BasePromptStrategy implement et +
 PromptStrategyFactory.register() çağır. UI dropdown'u otomatik tanır.
@@ -33,6 +35,8 @@ from src.prompt_strategies.custom import CustomStrategy
 from src.prompt_strategies.multi_query import MultiQueryStrategy
 from src.prompt_strategies.query_rewrite import QueryRewriteStrategy
 from src.prompt_strategies.self_refine import SelfRefineStrategy
+from src.prompt_strategies.hyde import HyDEStrategy
+from src.prompt_strategies.step_back import StepBackStrategy
 
 __all__ = [
     "BasePromptStrategy",
@@ -46,4 +50,7 @@ __all__ = [
     "MultiQueryStrategy",
     "QueryRewriteStrategy",
     "SelfRefineStrategy",
+    "HyDEStrategy",
+    "StepBackStrategy",
 ]
+

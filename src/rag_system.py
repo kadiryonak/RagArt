@@ -50,6 +50,8 @@ from src.prompt_strategies import (
 )
 from src.prompt_strategies.multi_query import MultiQueryStrategy
 from src.cache import EmbeddingCache, ResponseCache, SemanticCache
+from src.query_classifier import QueryClassifier, QueryComplexity, greeting_response
+from src.guard import InputGuard, GroundednessScorer
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
 
 logger = get_logger(__name__)
@@ -600,6 +602,56 @@ class TurkishRAGSystem:
             }
         
         try:
+            # ── Security: prompt injection check ─────────────────────
+            guard_result = InputGuard.check(question)
+            if not guard_result.is_safe:
+                logger.warning(
+                    f"{StatusEmoji.WARNING} Prompt injection detected "
+                    f"(score={guard_result.score:.2f}, reason={guard_result.reason})"
+                )
+                return {
+                    "question": question,
+                    "answer": InputGuard.rejection_message(),
+                    "source_documents": [],
+                    "context_used": "",
+                    "source": "guard_blocked",
+                    "relevance_score": 0.0,
+                    "guard_score": guard_result.score,
+                    "guard_reason": guard_result.reason,
+                }
+
+            # ── Adaptive retrieval ─────────────────────────────────────
+            complexity = QueryClassifier.classify(question)
+            adaptive_cfg = QueryClassifier.get_config(complexity)
+            logger.info(f"{StatusEmoji.INFO} Query complexity: {complexity.value}")
+
+            # Greeting → skip everything, return fast
+            if adaptive_cfg.skip_retrieval:
+                logger.info(f"{StatusEmoji.SUCCESS} Greeting detected, skipping retrieval")
+                return {
+                    "question": question,
+                    "answer": greeting_response(question),
+                    "source_documents": [],
+                    "context_used": "",
+                    "source": "greeting",
+                    "relevance_score": 1.0,
+                    "retrieval_strategy": "none",
+                    "memory_strategy": "none",
+                    "memory_used": False,
+                    "prompt_strategy": "adaptive",
+                    "cache_hit": False,
+                    "query_complexity": complexity.value,
+                }
+
+            # Override k / strategy / rerank from adaptive config
+            # (only if caller didn't explicitly set them)
+            if k == 4:  # default value → use adaptive
+                k = adaptive_cfg.k
+            if retrieval_strategy is None:
+                retrieval_strategy = adaptive_cfg.retrieval_strategy
+            if not rerank and adaptive_cfg.rerank:
+                rerank = True
+
             # ── Cache lookup ──────────────────────────────────────────
             # Build a payload dict capturing every param that affects the
             # answer so exact-match cache works correctly.
@@ -760,7 +812,17 @@ class TurkishRAGSystem:
                 "memory_used": bool(memory_context),
                 "prompt_strategy": strategy.name,
                 "cache_hit": False,
+                "query_complexity": complexity.value,
             }
+
+            # ── Groundedness check ────────────────────────────────────
+            g_score = GroundednessScorer.score(answer, context)
+            result["groundedness_score"] = round(g_score, 3)
+            if not GroundednessScorer.is_grounded(g_score):
+                result["groundedness_warning"] = True
+                logger.warning(
+                    f"{StatusEmoji.WARNING} Low groundedness: {g_score:.3f}"
+                )
 
             # ── Cache persist ─────────────────────────────────────────
             # Only cache successful answers (avoid caching errors/refusals).

@@ -147,3 +147,10 @@ data/workspaces/*/meta.json
 data/workspaces/*/chroma_db/
 data/workspaces/*/qdrant_db/
 data/chroma_db/
+
+# Cache DBs (runtime SQLite files)
+data/workspaces/*/cache/
+cache/
+
+# A/B evaluation history
+eval-history/
