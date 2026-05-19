@@ -24,7 +24,8 @@ def client(monkeypatch):
                  retrieval_strategy=None, rerank=False, rerank_fetch_k=20,
                  history=None, memory_strategy=None,
                  deduplicate_context=False, reorder_context=False,
-                 max_context_tokens=None):
+                 max_context_tokens=None,
+                 allow_general_knowledge_fallback=False):
         captured["question"] = question
         captured["k"] = k
         captured["llm_provider"] = llm_provider
@@ -37,6 +38,7 @@ def client(monkeypatch):
         captured["deduplicate_context"] = deduplicate_context
         captured["reorder_context"] = reorder_context
         captured["max_context_tokens"] = max_context_tokens
+        captured["allow_general_knowledge_fallback"] = allow_general_knowledge_fallback
         return {
             "question": question,
             "answer": "stub cevap",
@@ -309,6 +311,21 @@ class TestAskWithBYOK:
         assert captured["deduplicate_context"] is False
         assert captured["reorder_context"] is False
         assert captured["max_context_tokens"] is None
+
+    def test_general_knowledge_fallback_default_off(self, client):
+        """SAFETY: must default to False — protects against hallucination."""
+        c, captured, _ = client
+        c.post("/ask", json={"question": "x"})
+        assert captured["allow_general_knowledge_fallback"] is False
+
+    def test_general_knowledge_fallback_opt_in(self, client):
+        c, captured, _ = client
+        c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Allow-General-Knowledge": "true"},
+        )
+        assert captured["allow_general_knowledge_fallback"] is True
 
     def test_ollama_no_key_ok(self, client):
         c, captured, _ = client

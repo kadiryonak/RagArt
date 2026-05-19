@@ -1322,6 +1322,22 @@
                 </div>
 
                 <div class="form-section">
+                    <div class="form-section-title">Güvenlik</div>
+                    <div class="form-group">
+                        <label class="form-label" style="cursor: pointer;">
+                            <span>Genel bilgi fallback'i (halüsinasyon riski)</span>
+                            <input type="checkbox" id="allowGeneralKbToggle" style="width: auto; margin-left: 8px;">
+                        </label>
+                        <div class="form-hint" style="color: var(--warning);">
+                            ⚠️ Bilgi tabanında cevap yoksa LLM kendi genel
+                            bilgisinden cevap üretsin mi? <strong>Default kapalı.</strong>
+                            Açtığında özel isim, kuruluş veya proprietary
+                            içerikli sorularda LLM'in UYDURDUĞU cevap döner.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
                     <div class="form-section-title">Context Engineering</div>
                     <div class="form-group">
                         <label class="form-label" style="cursor: pointer;">
@@ -1449,6 +1465,7 @@
                 contextDedup: false,
                 contextReorder: false,
                 contextMaxTokens: null,
+                allowGeneralKb: false,
             };
         }
 
@@ -1581,6 +1598,9 @@
             if (userSettings.contextMaxTokens) {
                 h['X-Context-Max-Tokens'] = String(userSettings.contextMaxTokens);
             }
+            if (userSettings.allowGeneralKb) {
+                h['X-Allow-General-Knowledge'] = 'true';
+            }
             if (userSettings.memoryStrategy && userSettings.memoryStrategy !== 'none') {
                 h['X-Memory-Strategy'] = userSettings.memoryStrategy;
                 if (conversationHistory.length > 0) {
@@ -1664,6 +1684,15 @@
                 const v = parseInt(maxTokEl.value, 10);
                 userSettings.contextMaxTokens = (!isNaN(v) && v >= 64) ? v : null;
             });
+
+            // Hallucination opt-in (safe default = OFF)
+            const fbToggle = document.getElementById('allowGeneralKbToggle');
+            if (fbToggle) {
+                fbToggle.checked = !!userSettings.allowGeneralKb;
+                fbToggle.addEventListener('change', () => {
+                    userSettings.allowGeneralKb = fbToggle.checked;
+                });
+            }
 
             // Memory strategy
             const msel = document.getElementById('memorySelect');

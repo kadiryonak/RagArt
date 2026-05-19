@@ -179,6 +179,7 @@ def ask_question():
             deduplicate_context=req_settings.deduplicate_context,
             reorder_context=req_settings.reorder_context,
             max_context_tokens=req_settings.max_context_tokens,
+            allow_general_knowledge_fallback=req_settings.allow_general_knowledge_fallback,
         )
         
         # Check for errors

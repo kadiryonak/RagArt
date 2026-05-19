@@ -148,6 +148,7 @@ class RequestSettings:
     deduplicate_context: bool = False           # redundancy filter (cosine sim)
     reorder_context: bool = False               # lost-in-the-middle reorder
     max_context_tokens: Optional[int] = None    # token budget cap
+    allow_general_knowledge_fallback: bool = False  # opt-in hallucination risk
 
 
 def parse_request_settings(headers) -> RequestSettings:
@@ -213,6 +214,7 @@ def parse_request_settings(headers) -> RequestSettings:
 
     dedup = _bool_header("X-Context-Deduplicate")
     reorder = _bool_header("X-Context-Reorder")
+    allow_general_kb = _bool_header("X-Allow-General-Knowledge")
 
     max_ctx_tokens: Optional[int] = None
     raw_budget = headers.get("X-Context-Max-Tokens")
@@ -235,6 +237,7 @@ def parse_request_settings(headers) -> RequestSettings:
         deduplicate_context=dedup,
         reorder_context=reorder,
         max_context_tokens=max_ctx_tokens,
+        allow_general_knowledge_fallback=allow_general_kb,
     )
 
 

@@ -494,6 +494,7 @@ class TurkishRAGSystem:
         deduplicate_context: bool = False,
         reorder_context: bool = False,
         max_context_tokens: Optional[int] = None,
+        allow_general_knowledge_fallback: bool = False,
     ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
@@ -561,6 +562,7 @@ class TurkishRAGSystem:
                 return self._fallback_response(
                     question, relevance_score,
                     llm_provider=llm_provider, llm_params=llm_params,
+                    allow_general_knowledge=allow_general_knowledge_fallback,
                 )
             
             # Build context from documents
@@ -648,55 +650,100 @@ class TurkishRAGSystem:
         *,
         llm_provider: Optional[BaseLLMProvider] = None,
         llm_params: Optional[Dict[str, Any]] = None,
+        allow_general_knowledge: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate a fallback response when RAG context is insufficient.
+
+        SAFETY DEFAULT: ``allow_general_knowledge=False``.
+
+        When the retrieval finds nothing relevant, the previous behaviour
+        was to let the cloud LLM produce a "general knowledge" answer.
+        That answer is unconstrained and the LLM happily HALLUCINATES
+        proper-noun content — a query about a private person whose CV was
+        just uploaded but indexed badly would come back as a fabricated
+        biography of someone else entirely. For personal / proprietary
+        data this is unacceptable.
+
+        With the default (False) we now return a clean Turkish "no info"
+        response and tell the user how to fix it (upload + reindex,
+        enable reranker, etc.). Power users can opt in via the header
+        X-Allow-General-Knowledge: true when they trust the LLM's
+        general knowledge for the topic of their knowledge base.
 
         Args:
             question: The user's question
             relevance_score: The relevance score that triggered fallback
             llm_provider: Optional per-request provider override
             llm_params: Optional per-request LLM param overrides
+            allow_general_knowledge: Opt-in to let the LLM answer from
+                its own training data (HALLUCINATION RISK for
+                personal/proprietary content).
 
         Returns:
             Response dictionary
         """
         provider = llm_provider or self.llm_provider
-        # Local fallback provider does not produce general answers
         is_cloud = not isinstance(provider, LocalProvider)
+
+        # Safe default: no LLM call, no hallucination
+        if not allow_general_knowledge:
+            data_summary = self._get_data_summary()
+            return {
+                "question": question,
+                "answer": (
+                    "Bu konuda bilgi tabanında yeterli detay bulunamadı.\n\n"
+                    "Olası nedenler:\n"
+                    "• İlgili dosya henüz yüklenmedi veya yüklendiyse "
+                    "'Bilgi Tabanını Yeniden İndeksle' butonuna basılmadı.\n"
+                    "• PDF dosyası taranmış (görsel) olabilir — pypdf "
+                    "metin katmanı olmayan PDF'lerden çıkarım yapamaz.\n"
+                    "• Soru, mevcut belgelerden ayrı bir konuda olabilir.\n\n"
+                    f"Mevcut konular: {data_summary}\n\n"
+                    "İpucu: Ayarlardan **Cross-encoder reranker**'ı açmak "
+                    "alakalı belgeleri yukarı çıkarabilir; isterseniz "
+                    "**Ayarlar → 'Genel bilgi fallback'i'** ile LLM'in "
+                    "kendi bilgisinden cevap üretmesine izin verebilirsiniz "
+                    "(halüsinasyon riski içerir)."
+                ),
+                "source_documents": [],
+                "context_used": "",
+                "source": "insufficient_data",
+                "relevance_score": relevance_score,
+            }
+
+        # Opt-in branch: user explicitly accepted the hallucination risk
         if is_cloud:
             general_answer = provider.generate_general(question, **(llm_params or {}))
-            
-            # Get data summary
             data_summary = self._get_data_summary()
-            
-            final_answer = f"""Bu konuda mevcut verilerimde yeterli detay bulunamadı, ancak genel bilgilerim şunlar:
-
-{general_answer}
-
----
-📚 **Available Data Topics:**
-{data_summary}
-
-💡 **Note:** This response is from general knowledge ({self.model_type}). You can expand your knowledge base for more specific information."""
-            
+            final_answer = (
+                "⚠️ Bilgi tabanında yeterli detay bulunamadı; aşağıdaki cevap "
+                f"{self.model_type} modelinin GENEL bilgisinden üretildi "
+                "(halüsinasyon olasılığı yüksek — özellikle özel isim, "
+                "kuruluş veya proprietary bilgi içeren sorularda):\n\n"
+                f"{general_answer}\n\n"
+                f"---\n📚 Mevcut konular: {data_summary}"
+            )
             return {
                 "question": question,
                 "answer": final_answer,
                 "source_documents": [],
                 "context_used": "",
-                "source": "deepseek_fallback",
-                "relevance_score": relevance_score
+                "source": "general_knowledge_fallback",
+                "relevance_score": relevance_score,
             }
-        else:
-            return {
-                "question": question,
-                "answer": f"Insufficient information in the knowledge base. Relevance score: {relevance_score:.3f}. Consider expanding your data.",
-                "source_documents": [],
-                "context_used": "",
-                "source": "insufficient_data",
-                "relevance_score": relevance_score
-            }
+        return {
+            "question": question,
+            "answer": (
+                f"Bilgi tabanında yeterli detay bulunamadı (relevance score: "
+                f"{relevance_score:.3f}). Lütfen ilgili belgeleri yükleyin "
+                "veya soru ifadenizi değiştirin."
+            ),
+            "source_documents": [],
+            "context_used": "",
+            "source": "insufficient_data",
+            "relevance_score": relevance_score,
+        }
     
     def _get_data_summary(self) -> str:
         """
