@@ -31,6 +31,8 @@ from src.prompt_strategies.few_shot import FewShotStrategy
 from src.prompt_strategies.role_based import RoleBasedStrategy
 from src.prompt_strategies.custom import CustomStrategy
 from src.prompt_strategies.multi_query import MultiQueryStrategy
+from src.prompt_strategies.query_rewrite import QueryRewriteStrategy
+from src.prompt_strategies.self_refine import SelfRefineStrategy
 
 __all__ = [
     "BasePromptStrategy",
@@ -42,4 +44,6 @@ __all__ = [
     "RoleBasedStrategy",
     "CustomStrategy",
     "MultiQueryStrategy",
+    "QueryRewriteStrategy",
+    "SelfRefineStrategy",
 ]

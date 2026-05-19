@@ -16,7 +16,9 @@ from src.prompt_strategies import (
     FewShotStrategy,
     MultiQueryStrategy,
     PromptStrategyFactory,
+    QueryRewriteStrategy,
     RoleBasedStrategy,
+    SelfRefineStrategy,
     StrategyContext,
 )
 
@@ -43,17 +45,119 @@ class TestFactory:
         assert isinstance(PromptStrategyFactory.create("multi_query"), MultiQueryStrategy)
 
     def test_is_advanced_flag(self):
-        # Custom + multi_query are gated by developer mode in the UI;
-        # backend exposes this so the dropdown can filter without
-        # hardcoding strategy IDs.
+        # Custom + multi_query + query_rewrite + self_refine are gated by
+        # developer mode in the UI; backend exposes this so the dropdown
+        # can filter without hardcoding strategy IDs.
         by_id = {s["id"]: s for s in PromptStrategyFactory.available()}
-        assert by_id["custom"]["is_advanced"] is True
-        assert by_id["multi_query"]["is_advanced"] is True
+        for advanced in ("custom", "multi_query", "query_rewrite", "self_refine"):
+            assert by_id[advanced]["is_advanced"] is True, advanced
         # Standard strategies must stay visible without dev mode
-        assert by_id["direct"]["is_advanced"] is False
-        assert by_id["chain_of_thought"]["is_advanced"] is False
-        assert by_id["few_shot"]["is_advanced"] is False
-        assert by_id["role_based"]["is_advanced"] is False
+        for standard in ("direct", "chain_of_thought", "few_shot", "role_based"):
+            assert by_id[standard]["is_advanced"] is False, standard
+
+
+# ----- Query Rewrite -----
+
+
+class TestQueryRewrite:
+    def test_returns_original_plus_rewritten(self):
+        s = QueryRewriteStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = "Kadir Yönak'ın eğitimi ve uzmanlık alanı nedir?"
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        out = s.generate_query_variations("Kadir kimdir?", ctx)
+        assert out[0] == "Kadir kimdir?"  # original always first
+        assert "Kadir Yönak" in out[1]
+
+    def test_strips_prefix(self):
+        s = QueryRewriteStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = "YENİDEN YAZILMIŞ: Daha net hali"
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        out = s.generate_query_variations("q", ctx)
+        assert out[1] == "Daha net hali"
+
+    def test_strips_quotes(self):
+        s = QueryRewriteStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = '"alıntı içeren cevap"'
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        out = s.generate_query_variations("q", ctx)
+        assert out[1] == "alıntı içeren cevap"
+
+    def test_llm_failure_falls_back_to_original(self):
+        s = QueryRewriteStrategy()
+        llm = MagicMock()
+        llm.generate.side_effect = RuntimeError("boom")
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.generate_query_variations("q", ctx) == ["q"]
+
+    def test_identical_rewrite_dropped(self):
+        s = QueryRewriteStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = "q"  # same as input
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.generate_query_variations("q", ctx) == ["q"]
+
+
+# ----- Self-Refine -----
+
+
+class TestSelfRefine:
+    def test_three_call_flow_when_critique_complains(self):
+        s = SelfRefineStrategy()
+        llm = MagicMock()
+        llm.generate.side_effect = [
+            "İlk cevap.",                    # 1: initial
+            "Eksik: detay yetersiz.",        # 2: critique
+            "Düzeltilmiş final cevap.",      # 3: refine
+        ]
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        out = s.execute(ctx, question="q", context="c")
+        assert out == "Düzeltilmiş final cevap."
+        assert llm.generate.call_count == 3
+
+    def test_skips_refine_when_critique_says_ok(self):
+        s = SelfRefineStrategy()
+        llm = MagicMock()
+        llm.generate.side_effect = [
+            "İlk cevap.",                     # 1: initial
+            "Cevap doğru ve eksiksiz.",       # 2: critique short-circuits
+        ]
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        out = s.execute(ctx, question="q", context="c")
+        assert out == "İlk cevap."
+        assert llm.generate.call_count == 2  # NOT 3
+
+    def test_critique_failure_returns_initial(self):
+        s = SelfRefineStrategy()
+        llm = MagicMock()
+        llm.generate.side_effect = [
+            "İlk cevap.",
+            RuntimeError("critique LLM hata"),
+        ]
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.execute(ctx, question="q", context="c") == "İlk cevap."
+
+    def test_refine_failure_returns_initial(self):
+        s = SelfRefineStrategy()
+        llm = MagicMock()
+        llm.generate.side_effect = [
+            "İlk cevap.",
+            "Eksik var.",
+            RuntimeError("refine LLM hata"),
+        ]
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.execute(ctx, question="q", context="c") == "İlk cevap."
+
+    def test_empty_initial_short_circuits(self):
+        s = SelfRefineStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = ""
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        s.execute(ctx, question="q", context="c")
+        # Only one call — no point refining nothing
+        assert llm.generate.call_count == 1
 
 
 # ----- Direct -----
