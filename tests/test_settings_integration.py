@@ -24,7 +24,10 @@ def client(monkeypatch):
                  retrieval_strategy=None, rerank=False, rerank_fetch_k=20,
                  history=None, memory_strategy=None,
                  deduplicate_context=False, reorder_context=False,
-                 max_context_tokens=None):
+                 max_context_tokens=None,
+                 allow_general_knowledge_fallback=False,
+                 prompt_strategy=None, custom_role=None,
+                 custom_prompt_template=None):
         captured["question"] = question
         captured["k"] = k
         captured["llm_provider"] = llm_provider
@@ -37,6 +40,10 @@ def client(monkeypatch):
         captured["deduplicate_context"] = deduplicate_context
         captured["reorder_context"] = reorder_context
         captured["max_context_tokens"] = max_context_tokens
+        captured["allow_general_knowledge_fallback"] = allow_general_knowledge_fallback
+        captured["prompt_strategy"] = prompt_strategy
+        captured["custom_role"] = custom_role
+        captured["custom_prompt_template"] = custom_prompt_template
         return {
             "question": question,
             "answer": "stub cevap",
@@ -50,7 +57,17 @@ def client(monkeypatch):
     fake_rag.ask.side_effect = stub_ask
     fake_rag.model_type = "stub"
 
-    monkeypatch.setattr(app_module, "rag_system", fake_rag)
+    # Inject the fake into the workspace cache so any X-Workspace-Id
+    # (or the default) resolves to this stub instead of trying to build
+    # a real RAG (which would load the embedding model on every test).
+    from src.workspaces import DEFAULT_WORKSPACE_ID
+    app_module._rag_cache.clear()
+    app_module._rag_cache[DEFAULT_WORKSPACE_ID] = fake_rag
+
+    def get_rag_stub(_ws_id):
+        return fake_rag
+
+    monkeypatch.setattr(app_module, "get_rag_for", get_rag_stub)
     monkeypatch.setattr(app_module, "system_ready", True)
 
     app_module.app.config["TESTING"] = True
@@ -309,6 +326,21 @@ class TestAskWithBYOK:
         assert captured["deduplicate_context"] is False
         assert captured["reorder_context"] is False
         assert captured["max_context_tokens"] is None
+
+    def test_general_knowledge_fallback_default_off(self, client):
+        """SAFETY: must default to False — protects against hallucination."""
+        c, captured, _ = client
+        c.post("/ask", json={"question": "x"})
+        assert captured["allow_general_knowledge_fallback"] is False
+
+    def test_general_knowledge_fallback_opt_in(self, client):
+        c, captured, _ = client
+        c.post(
+            "/ask",
+            json={"question": "x"},
+            headers={"X-Allow-General-Knowledge": "true"},
+        )
+        assert captured["allow_general_knowledge_fallback"] is True
 
     def test_ollama_no_key_ok(self, client):
         c, captured, _ = client

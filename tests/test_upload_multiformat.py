@@ -11,11 +11,23 @@ import pytest
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    """Flask test client with a temp DATA_FOLDER so uploads don't pollute repo."""
+    """Flask test client with a temp DATA_FOLDER so uploads don't pollute repo.
+
+    Uploads land in the workspace's files/ dir, not the data root, so the
+    test must inspect the workspace path.
+    """
     import app as app_module
     monkeypatch.setattr(app_module.settings, "DATA_FOLDER", str(tmp_path), raising=False)
+    # Re-init workspace manager pointed at tmp_path so each test is isolated
+    from src.workspaces import WorkspaceManager, DEFAULT_WORKSPACE_ID
+    app_module.workspace_manager = WorkspaceManager(str(tmp_path))
+    app_module._rag_cache.clear()
     app_module.app.config["TESTING"] = True
-    return app_module.app.test_client(), tmp_path
+
+    # Tests assert "(tmp / 'name')"; expose the workspace files dir as that
+    # location so they read the right place.
+    ws_files = app_module.workspace_manager.files_dir(DEFAULT_WORKSPACE_ID)
+    return app_module.app.test_client(), ws_files
 
 
 def _post_file(c, filename: str, content: bytes):

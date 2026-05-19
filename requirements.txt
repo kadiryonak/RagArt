@@ -9,6 +9,10 @@ sentence-transformers>=2.2.2
 # Retrieval — sparse / hybrid
 rank_bm25>=0.2.2
 
+# Vector DBs (workspace-selectable; chromadb is core; others optional)
+# Uncomment to enable Qdrant adapter in the UI dropdown:
+# qdrant-client>=1.10.0
+
 # Document loaders — multi-format upload (PDF / DOCX)
 # JSON, TXT, MD use stdlib (no extra deps).
 pypdf>=4.0.0

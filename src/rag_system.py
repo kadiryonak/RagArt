@@ -40,6 +40,18 @@ from src.context import (
     RedundancyFilter,
     TokenBudgetTrimmer,
 )
+from src.prompt_strategies import (
+    BasePromptStrategy,
+    CustomStrategy,
+    DirectStrategy,
+    PromptStrategyFactory,
+    RoleBasedStrategy,
+    StrategyContext,
+)
+from src.prompt_strategies.multi_query import MultiQueryStrategy
+from src.cache import EmbeddingCache, ResponseCache, SemanticCache
+from src.query_classifier import QueryClassifier, QueryComplexity, greeting_response
+from src.guard import InputGuard, GroundednessScorer
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
 
 logger = get_logger(__name__)
@@ -150,6 +162,22 @@ class TurkishRAGSystem:
 
         # Document loader
         self.document_loader = JSONDocumentLoader(data_folder)
+
+        # Caches: embedding cache wraps the embedder transparently;
+        # response/semantic caches are checked in ask() when enabled.
+        # Cache DBs live alongside the chroma persist path so they get
+        # cleaned up together if the workspace is reset.
+        from pathlib import Path as _P
+        cache_dir = _P(chroma_db_path).parent / "cache"
+        self.embedding_cache = EmbeddingCache(
+            str(cache_dir / "embeddings.db"),
+            embedder=self.embedding_manager,
+        )
+        self.response_cache = ResponseCache(str(cache_dir / "responses.db"))
+        self.semantic_cache = SemanticCache(
+            str(cache_dir / "semantic.db"),
+            embed_fn=self.embedding_cache.embed_query,
+        )
 
         # Retrievers — built when vector store is ready (dense always,
         # sparse from the same docs, hybrid as RRF of the two).
@@ -452,6 +480,52 @@ class TurkishRAGSystem:
             )
         return NoMemory()
 
+    def _fuse_retrievals(self, queries, k, retrieve_fn):
+        """Multi-query RRF: her query'den retrieve et, rank-based birleştir.
+
+        K_RRF=60 (Microsoft paper'daki ampirik default). Sonuçların kimliği
+        (source + page_content hash) üzerinden dedup yapılır.
+        """
+        K_RRF = 60
+        scores: dict = {}
+        docs_by_id: dict = {}
+        for q in queries:
+            ds = retrieve_fn(q, k * 2)  # over-sample
+            for rank, doc in enumerate(ds):
+                doc_id = (
+                    doc.metadata.get("source", "?"),
+                    doc.metadata.get("item_index", -1),
+                    hash(doc.page_content[:200]) & 0xFFFFFFFF,
+                )
+                scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (K_RRF + rank + 1)
+                docs_by_id.setdefault(doc_id, doc)
+        ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+        return [docs_by_id[did] for did, _ in ranked[:k]]
+
+    def _resolve_prompt_strategy(
+        self,
+        name: Optional[str],
+        *,
+        custom_role: Optional[str] = None,
+        custom_prompt_template: Optional[str] = None,
+    ) -> BasePromptStrategy:
+        """Strategy adından instance üret.
+
+        Special cases:
+            - 'role_based' → user-provided role is injected
+            - 'custom'     → user-provided template is injected
+            - None / unknown → DirectStrategy (safe default)
+        """
+        key = (name or "direct").strip().lower()
+        if key == "role_based":
+            return RoleBasedStrategy(role=custom_role)
+        if key == "custom":
+            return CustomStrategy(template=custom_prompt_template)
+        if PromptStrategyFactory.is_available(key):
+            return PromptStrategyFactory.create(key)
+        # Unknown / mistyped strategy → fall back rather than 500
+        return DirectStrategy()
+
     def _build_context_chain(
         self,
         *,
@@ -494,6 +568,13 @@ class TurkishRAGSystem:
         deduplicate_context: bool = False,
         reorder_context: bool = False,
         max_context_tokens: Optional[int] = None,
+        allow_general_knowledge_fallback: bool = False,
+        prompt_strategy: Optional[str] = None,
+        custom_role: Optional[str] = None,
+        custom_prompt_template: Optional[str] = None,
+        use_response_cache: bool = True,
+        use_semantic_cache: bool = False,
+        semantic_cache_threshold: float = 0.92,
     ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
@@ -521,6 +602,96 @@ class TurkishRAGSystem:
             }
         
         try:
+            # ── Security: prompt injection check ─────────────────────
+            guard_result = InputGuard.check(question)
+            if not guard_result.is_safe:
+                logger.warning(
+                    f"{StatusEmoji.WARNING} Prompt injection detected "
+                    f"(score={guard_result.score:.2f}, reason={guard_result.reason})"
+                )
+                return {
+                    "question": question,
+                    "answer": InputGuard.rejection_message(),
+                    "source_documents": [],
+                    "context_used": "",
+                    "source": "guard_blocked",
+                    "relevance_score": 0.0,
+                    "guard_score": guard_result.score,
+                    "guard_reason": guard_result.reason,
+                }
+
+            # ── Adaptive retrieval ─────────────────────────────────────
+            complexity = QueryClassifier.classify(question)
+            adaptive_cfg = QueryClassifier.get_config(complexity)
+            logger.info(f"{StatusEmoji.INFO} Query complexity: {complexity.value}")
+
+            # Greeting → skip everything, return fast
+            if adaptive_cfg.skip_retrieval:
+                logger.info(f"{StatusEmoji.SUCCESS} Greeting detected, skipping retrieval")
+                return {
+                    "question": question,
+                    "answer": greeting_response(question),
+                    "source_documents": [],
+                    "context_used": "",
+                    "source": "greeting",
+                    "relevance_score": 1.0,
+                    "retrieval_strategy": "none",
+                    "memory_strategy": "none",
+                    "memory_used": False,
+                    "prompt_strategy": "adaptive",
+                    "cache_hit": False,
+                    "query_complexity": complexity.value,
+                }
+
+            # Override k / strategy / rerank from adaptive config
+            # (only if caller didn't explicitly set them)
+            if k == 4:  # default value → use adaptive
+                k = adaptive_cfg.k
+            if retrieval_strategy is None:
+                retrieval_strategy = adaptive_cfg.retrieval_strategy
+            if not rerank and adaptive_cfg.rerank:
+                rerank = True
+
+            # ── Cache lookup ──────────────────────────────────────────
+            # Build a payload dict capturing every param that affects the
+            # answer so exact-match cache works correctly.
+            cache_payload = {
+                "question": question,
+                "k": k,
+                "retrieval_strategy": retrieval_strategy,
+                "rerank": rerank,
+                "rerank_fetch_k": rerank_fetch_k,
+                "prompt_strategy": prompt_strategy,
+                "custom_role": custom_role,
+                "custom_prompt_template": custom_prompt_template,
+                "memory_strategy": memory_strategy,
+                "deduplicate_context": deduplicate_context,
+                "reorder_context": reorder_context,
+                "max_context_tokens": max_context_tokens,
+                "llm_params": dict(llm_params or {}),
+                "provider": getattr(llm_provider, "model", self.model_type),
+            }
+
+            # 1) Exact response cache
+            if use_response_cache:
+                cached = self.response_cache.get(cache_payload)
+                if cached is not None:
+                    logger.info(f"{StatusEmoji.SUCCESS} Response cache HIT (exact)")
+                    cached["cache_hit"] = "exact"
+                    return cached
+
+            # 2) Semantic cache (cosine similarity ≥ threshold)
+            if use_semantic_cache:
+                sem_result, sim = self.semantic_cache.get(question)
+                if sem_result is not None:
+                    logger.info(
+                        f"{StatusEmoji.SUCCESS} Semantic cache HIT "
+                        f"(sim={sim:.3f} ≥ {semantic_cache_threshold})"
+                    )
+                    sem_result["cache_hit"] = f"semantic({sim:.3f})"
+                    return sem_result
+
+            # ── Normal retrieval path ─────────────────────────────────
             # Build context-engineering chain (None if no flags set)
             context_chain = self._build_context_chain(
                 deduplicate=deduplicate_context,
@@ -536,20 +707,50 @@ class TurkishRAGSystem:
                 context_label_parts.append("reorder")
             context_label = "+ctx[" + ",".join(context_label_parts) + "]" if context_label_parts else ""
 
-            # Search for relevant documents
+            # Resolve prompt strategy + build the strategy execution
+            # context that multi-step strategies will need.
+            strategy = self._resolve_prompt_strategy(
+                prompt_strategy,
+                custom_role=custom_role,
+                custom_prompt_template=custom_prompt_template,
+            )
+            provider = llm_provider or self.llm_provider
+
+            def _retrieve(q: str, kk: int):
+                return self.search(
+                    q, k=kk, strategy=retrieval_strategy,
+                    rerank=rerank, rerank_fetch_k=rerank_fetch_k,
+                    context_chain=context_chain,
+                )
+
+            strategy_ctx = StrategyContext(
+                llm=provider,
+                retrieve_fn=_retrieve,
+                embed_fn=self.embedding_manager.embed_query,
+                llm_params=dict(llm_params or {}),
+            )
+
+            # Search for relevant documents — multi-query strategies expand
+            # the original question into N variants, retrieve per variant
+            # and fuse with RRF; single-query strategies just retrieve once.
             strategy_label = (
                 (retrieval_strategy or "auto")
                 + ("+rerank" if rerank else "")
                 + context_label
+                + f"+prompt[{strategy.name}]"
             )
             logger.info(
                 f"{StatusEmoji.SEARCH} Searching ({strategy_label}) for: '{question}'..."
             )
-            relevant_docs = self.search(
-                question, k=k, strategy=retrieval_strategy,
-                rerank=rerank, rerank_fetch_k=rerank_fetch_k,
-                context_chain=context_chain,
-            )
+
+            if strategy.is_multi_query:
+                variants = strategy.generate_query_variations(question, strategy_ctx)
+                logger.info(
+                    f"{StatusEmoji.INFO} Multi-query expanded to {len(variants)} variants"
+                )
+                relevant_docs = self._fuse_retrievals(variants, k, _retrieve)
+            else:
+                relevant_docs = _retrieve(question, k)
             
             # Calculate relevance score
             relevance_score = self.calculate_relevance_score(question, relevant_docs)
@@ -561,6 +762,7 @@ class TurkishRAGSystem:
                 return self._fallback_response(
                     question, relevance_score,
                     llm_provider=llm_provider, llm_params=llm_params,
+                    allow_general_knowledge=allow_general_knowledge_fallback,
                 )
             
             # Build context from documents
@@ -575,28 +777,23 @@ class TurkishRAGSystem:
             memory = self._build_memory(memory_strategy, llm_for_summary=llm_provider)
             memory_context = memory.apply(history or [], question).strip()
 
-            # Pick the right prompt template based on whether we have memory
-            if memory_context:
-                full_prompt = TURKISH_SYSTEM_PROMPT_WITH_MEMORY.format(
-                    memory_context=memory_context,
-                    context=context,
-                    question=question,
-                )
-            else:
-                full_prompt = self.system_prompt.format(
-                    context=context,
-                    question=question,
-                )
-            
-            provider = llm_provider or self.llm_provider
             provider_label = getattr(provider, "model", self.model_type)
-            logger.info(f"{StatusEmoji.ROBOT} Generating response ({provider_label})...")
+            logger.info(
+                f"{StatusEmoji.ROBOT} Generating ({provider_label}) "
+                f"via strategy={strategy.name}..."
+            )
 
-            # Get LLM response (with optional per-request param override)
-            answer = provider.generate(full_prompt, **(llm_params or {}))
+            # Strategy owns the prompt construction AND any extra LLM calls
+            # (CoT extracts the YANIT block; multi-step ones can override).
+            answer = strategy.execute(
+                strategy_ctx,
+                question=question,
+                context=context,
+                memory_context=memory_context,
+            )
             
-            # Return result
-            return {
+            # Build result
+            result = {
                 "question": question,
                 "answer": answer,
                 "source_documents": [
@@ -613,8 +810,29 @@ class TurkishRAGSystem:
                 "retrieval_strategy": strategy_label,
                 "memory_strategy": memory_strategy or "none",
                 "memory_used": bool(memory_context),
+                "prompt_strategy": strategy.name,
+                "cache_hit": False,
+                "query_complexity": complexity.value,
             }
-            
+
+            # ── Groundedness check ────────────────────────────────────
+            g_score = GroundednessScorer.score(answer, context)
+            result["groundedness_score"] = round(g_score, 3)
+            if not GroundednessScorer.is_grounded(g_score):
+                result["groundedness_warning"] = True
+                logger.warning(
+                    f"{StatusEmoji.WARNING} Low groundedness: {g_score:.3f}"
+                )
+
+            # ── Cache persist ─────────────────────────────────────────
+            # Only cache successful answers (avoid caching errors/refusals).
+            if use_response_cache and answer:
+                self.response_cache.set(cache_payload, result)
+            if use_semantic_cache and answer:
+                self.semantic_cache.set(question, result)
+
+            return result
+
         except Exception as e:
             if isinstance(e, RuntimeError) and str(e) == "STALE_INDEX":
                 # Friendly Turkish message — UI surfaces this directly
@@ -648,55 +866,100 @@ class TurkishRAGSystem:
         *,
         llm_provider: Optional[BaseLLMProvider] = None,
         llm_params: Optional[Dict[str, Any]] = None,
+        allow_general_knowledge: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate a fallback response when RAG context is insufficient.
+
+        SAFETY DEFAULT: ``allow_general_knowledge=False``.
+
+        When the retrieval finds nothing relevant, the previous behaviour
+        was to let the cloud LLM produce a "general knowledge" answer.
+        That answer is unconstrained and the LLM happily HALLUCINATES
+        proper-noun content — a query about a private person whose CV was
+        just uploaded but indexed badly would come back as a fabricated
+        biography of someone else entirely. For personal / proprietary
+        data this is unacceptable.
+
+        With the default (False) we now return a clean Turkish "no info"
+        response and tell the user how to fix it (upload + reindex,
+        enable reranker, etc.). Power users can opt in via the header
+        X-Allow-General-Knowledge: true when they trust the LLM's
+        general knowledge for the topic of their knowledge base.
 
         Args:
             question: The user's question
             relevance_score: The relevance score that triggered fallback
             llm_provider: Optional per-request provider override
             llm_params: Optional per-request LLM param overrides
+            allow_general_knowledge: Opt-in to let the LLM answer from
+                its own training data (HALLUCINATION RISK for
+                personal/proprietary content).
 
         Returns:
             Response dictionary
         """
         provider = llm_provider or self.llm_provider
-        # Local fallback provider does not produce general answers
         is_cloud = not isinstance(provider, LocalProvider)
+
+        # Safe default: no LLM call, no hallucination
+        if not allow_general_knowledge:
+            data_summary = self._get_data_summary()
+            return {
+                "question": question,
+                "answer": (
+                    "Bu konuda bilgi tabanında yeterli detay bulunamadı.\n\n"
+                    "Olası nedenler:\n"
+                    "• İlgili dosya henüz yüklenmedi veya yüklendiyse "
+                    "'Bilgi Tabanını Yeniden İndeksle' butonuna basılmadı.\n"
+                    "• PDF dosyası taranmış (görsel) olabilir — pypdf "
+                    "metin katmanı olmayan PDF'lerden çıkarım yapamaz.\n"
+                    "• Soru, mevcut belgelerden ayrı bir konuda olabilir.\n\n"
+                    f"Mevcut konular: {data_summary}\n\n"
+                    "İpucu: Ayarlardan **Cross-encoder reranker**'ı açmak "
+                    "alakalı belgeleri yukarı çıkarabilir; isterseniz "
+                    "**Ayarlar → 'Genel bilgi fallback'i'** ile LLM'in "
+                    "kendi bilgisinden cevap üretmesine izin verebilirsiniz "
+                    "(halüsinasyon riski içerir)."
+                ),
+                "source_documents": [],
+                "context_used": "",
+                "source": "insufficient_data",
+                "relevance_score": relevance_score,
+            }
+
+        # Opt-in branch: user explicitly accepted the hallucination risk
         if is_cloud:
             general_answer = provider.generate_general(question, **(llm_params or {}))
-            
-            # Get data summary
             data_summary = self._get_data_summary()
-            
-            final_answer = f"""Bu konuda mevcut verilerimde yeterli detay bulunamadı, ancak genel bilgilerim şunlar:
-
-{general_answer}
-
----
-📚 **Available Data Topics:**
-{data_summary}
-
-💡 **Note:** This response is from general knowledge ({self.model_type}). You can expand your knowledge base for more specific information."""
-            
+            final_answer = (
+                "⚠️ Bilgi tabanında yeterli detay bulunamadı; aşağıdaki cevap "
+                f"{self.model_type} modelinin GENEL bilgisinden üretildi "
+                "(halüsinasyon olasılığı yüksek — özellikle özel isim, "
+                "kuruluş veya proprietary bilgi içeren sorularda):\n\n"
+                f"{general_answer}\n\n"
+                f"---\n📚 Mevcut konular: {data_summary}"
+            )
             return {
                 "question": question,
                 "answer": final_answer,
                 "source_documents": [],
                 "context_used": "",
-                "source": "deepseek_fallback",
-                "relevance_score": relevance_score
+                "source": "general_knowledge_fallback",
+                "relevance_score": relevance_score,
             }
-        else:
-            return {
-                "question": question,
-                "answer": f"Insufficient information in the knowledge base. Relevance score: {relevance_score:.3f}. Consider expanding your data.",
-                "source_documents": [],
-                "context_used": "",
-                "source": "insufficient_data",
-                "relevance_score": relevance_score
-            }
+        return {
+            "question": question,
+            "answer": (
+                f"Bilgi tabanında yeterli detay bulunamadı (relevance score: "
+                f"{relevance_score:.3f}). Lütfen ilgili belgeleri yükleyin "
+                "veya soru ifadenizi değiştirin."
+            ),
+            "source_documents": [],
+            "context_used": "",
+            "source": "insufficient_data",
+            "relevance_score": relevance_score,
+        }
     
     def _get_data_summary(self) -> str:
         """

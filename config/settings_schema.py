@@ -148,6 +148,10 @@ class RequestSettings:
     deduplicate_context: bool = False           # redundancy filter (cosine sim)
     reorder_context: bool = False               # lost-in-the-middle reorder
     max_context_tokens: Optional[int] = None    # token budget cap
+    allow_general_knowledge_fallback: bool = False  # opt-in hallucination risk
+    prompt_strategy: Optional[str] = None      # 'direct' | 'cot' | 'few_shot' | ...
+    custom_role: Optional[str] = None          # for role_based strategy
+    custom_prompt_template: Optional[str] = None  # for custom strategy
 
 
 def parse_request_settings(headers) -> RequestSettings:
@@ -213,6 +217,26 @@ def parse_request_settings(headers) -> RequestSettings:
 
     dedup = _bool_header("X-Context-Deduplicate")
     reorder = _bool_header("X-Context-Reorder")
+    allow_general_kb = _bool_header("X-Allow-General-Knowledge")
+
+    prompt_strategy = (headers.get("X-Prompt-Strategy") or "").strip().lower() or None
+
+    # Custom role / template come base64-encoded from the client because
+    # HTTP header values are ISO-8859-1 only and these may contain Turkish.
+    def _decode_header_b64(header_name: str) -> Optional[str]:
+        raw = headers.get(header_name)
+        if not raw:
+            return None
+        if raw.startswith("b64:"):
+            import base64
+            try:
+                return base64.b64decode(raw[4:]).decode("utf-8")
+            except Exception:
+                return None
+        return raw  # plain ASCII
+
+    custom_role = _decode_header_b64("X-Custom-Role")
+    custom_template = _decode_header_b64("X-Custom-Prompt")
 
     max_ctx_tokens: Optional[int] = None
     raw_budget = headers.get("X-Context-Max-Tokens")
@@ -235,7 +259,26 @@ def parse_request_settings(headers) -> RequestSettings:
         deduplicate_context=dedup,
         reorder_context=reorder,
         max_context_tokens=max_ctx_tokens,
+        allow_general_knowledge_fallback=allow_general_kb,
+        prompt_strategy=prompt_strategy,
+        custom_role=custom_role,
+        custom_prompt_template=custom_template,
     )
+
+
+def _prompt_strategy_schema() -> List[Dict[str, Any]]:
+    """Lazy import to avoid circular at module load + tolerate plugin
+    discovery failures (e.g., qdrant-client missing)."""
+    try:
+        from src.prompt_strategies import PromptStrategyFactory
+        return PromptStrategyFactory.available()
+    except Exception:
+        # Minimum guarantee so the UI never crashes
+        return [
+            {"id": "direct", "label": "Direkt cevap (önerilen)",
+             "description": "Default, tek LLM çağrısı.",
+             "is_multi_call": False, "is_multi_query": False},
+        ]
 
 
 def get_settings_schema() -> Dict[str, Any]:
@@ -283,6 +326,7 @@ def get_settings_schema() -> Dict[str, Any]:
                 "max": 32000,
             },
         },
+        "prompt_strategies": _prompt_strategy_schema(),
         "memory_strategies": [
             {"id": "none",          "label": "Hafıza yok",
              "desc": "Her soru izole. Tek-turn senaryolar için ideal."},

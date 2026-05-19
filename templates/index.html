@@ -1018,6 +1018,338 @@
             color: var(--warning);
         }
 
+        /* Workspaces landing */
+        .landing {
+            padding: 32px 28px;
+        }
+
+        .landing-header {
+            margin-bottom: 24px;
+        }
+
+        .landing-header h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            margin: 0 0 4px;
+            letter-spacing: -0.01em;
+        }
+
+        .landing-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin: 0;
+        }
+
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .ws-card {
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent);
+            border-radius: var(--radius);
+            padding: 18px 18px 14px;
+            cursor: pointer;
+            transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+            display: flex;
+            flex-direction: column;
+            min-height: 130px;
+            position: relative;
+        }
+
+        .ws-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+            border-color: var(--border-strong);
+        }
+
+        .ws-card-title {
+            font-weight: 600;
+            font-size: 15px;
+            color: var(--text);
+            margin: 0 0 6px;
+            line-height: 1.35;
+            padding-right: 24px;
+        }
+
+        .ws-card-desc {
+            color: var(--text-secondary);
+            font-size: 12.5px;
+            line-height: 1.5;
+            flex: 1;
+        }
+
+        .ws-card-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11.5px;
+            color: var(--text-muted);
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+
+        .ws-card-meta .meta-badge {
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+
+        .ws-card-delete {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            opacity: 0;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: opacity 0.15s ease, background 0.15s ease;
+        }
+
+        .ws-card:hover .ws-card-delete {
+            opacity: 1;
+        }
+
+        .ws-card-delete:hover {
+            background: var(--danger-soft);
+            color: var(--danger);
+        }
+
+        .ws-card-new {
+            border: 2px dashed var(--border-strong);
+            border-left: 2px dashed var(--border-strong);
+            background: transparent;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .ws-card-new:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .ws-card-new svg {
+            width: 28px;
+            height: 28px;
+            margin-bottom: 6px;
+        }
+
+        .ws-card-new span {
+            font-size: 13.5px;
+            font-weight: 500;
+        }
+
+        /* Back-to-landing button */
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--surface);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 6px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-right: 12px;
+            transition: all 0.15s ease;
+        }
+
+        .back-btn:hover {
+            background: var(--surface-hover);
+            color: var(--text);
+            border-color: var(--border-strong);
+        }
+
+        .back-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .ws-badge-active {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 500;
+            background: var(--accent-soft);
+            color: var(--accent);
+            margin-left: 8px;
+        }
+
+        .ws-badge-active::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* Color picker for create modal */
+        .color-picker {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .color-swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.12s ease;
+        }
+
+        .color-swatch:hover {
+            transform: scale(1.1);
+        }
+
+        .color-swatch.selected {
+            border-color: var(--text);
+        }
+
+        /* Help view */
+        .help-view {
+            padding: 28px 32px 40px;
+            max-width: 880px;
+            margin: 0 auto;
+            line-height: 1.65;
+            color: var(--text);
+        }
+
+        .help-view h2 {
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0 0 8px;
+            color: var(--text);
+        }
+
+        .help-view h3 {
+            font-size: 17px;
+            font-weight: 600;
+            margin: 28px 0 10px;
+            color: var(--text);
+            letter-spacing: -0.01em;
+        }
+
+        .help-view h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 18px 0 6px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .help-view p, .help-view li {
+            color: var(--text);
+            font-size: 14.5px;
+        }
+
+        .help-view ul {
+            padding-left: 22px;
+            margin: 8px 0;
+        }
+
+        .help-view li {
+            margin-bottom: 4px;
+        }
+
+        .help-view strong {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .help-view code {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12.5px;
+            color: var(--text);
+        }
+
+        .help-view .lead {
+            color: var(--text-secondary);
+            font-size: 14.5px;
+            margin: 0 0 24px;
+        }
+
+        .help-view table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 13.5px;
+        }
+
+        .help-view th, .help-view td {
+            border-bottom: 1px solid var(--border);
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .help-view th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .help-view .callout {
+            background: var(--accent-soft);
+            border-left: 3px solid var(--accent);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            margin: 14px 0;
+            font-size: 13.5px;
+        }
+
+        .help-view .callout.warn {
+            background: var(--warning-soft);
+            border-left-color: var(--warning);
+        }
+
+        /* Vector DB sub-panel inside settings */
+        .ws-info-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .ws-info-panel .ws-info-row {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-secondary);
+        }
+
+        .ws-info-panel .ws-info-row strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             body {
@@ -1076,10 +1408,29 @@
                 </div>
                 <div class="brand-text">
                     <h1>RagArt</h1>
-                    <p>Turkish RAG System · Knowledge-Driven QA</p>
+                    <p>
+                        <span id="brandSubtitle">Turkish RAG System · Knowledge-Driven QA</span>
+                        <span id="activeWorkspaceBadge" class="ws-badge-active" style="display: none;"></span>
+                    </p>
                 </div>
             </div>
             <div class="header-actions">
+                <button class="back-btn" id="backToLanding" style="display: none;"
+                        aria-label="Çalışma alanlarına dön" title="Çalışma alanları">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6" />
+                    </svg>
+                    Alanlar
+                </button>
+                <button class="theme-toggle" id="helpToggle" aria-label="Yardım" title="Yardım / README">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                </button>
                 <button class="theme-toggle" id="settingsToggle" aria-label="Settings" title="Ayarlar">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -1101,6 +1452,220 @@
                 </button>
             </div>
         </header>
+
+        <!-- Help / Usage Guide view -->
+        <section id="help-view" class="help-view" style="display: none;">
+            <h2>RagArt — Kullanım Kılavuzu</h2>
+            <p class="lead">
+                Türkçe odaklı, plug-in mimarili bir RAG (Retrieval-Augmented
+                Generation) sistemi. Aşağıdaki rehber her özelliğin <em>ne
+                zaman iyi olduğunu</em> ve <em>nasıl daha verimli
+                kullanılacağını</em> anlatır.
+            </p>
+
+            <h3>1. Workspace'ler nasıl çalışır?</h3>
+            <p>
+                Her workspace izole bir bilgi tabanıdır — kendi dosyaları,
+                kendi vektör veritabanı. Farklı projeler için ayrı tutmak
+                <strong>kalite ve gizlilik</strong> açısından kritik:
+            </p>
+            <ul>
+                <li>CV / özel evrak → kendi workspace'i (genel verilerle karışmaz)</li>
+                <li>Şirket dokümanları → ayrı workspace</li>
+                <li>Wikipedia örnekleri → <code>Default</code> workspace'te kalır</li>
+            </ul>
+            <div class="callout">
+                💡 <strong>İpucu:</strong> Dosya yükledikten sonra
+                <strong>Bilgi Tabanını Yeniden İndeksle</strong> butonuna
+                basmadan retrieval çalışmaz.
+            </div>
+
+            <h3>2. Retrieval stratejisi (Ayarlar)</h3>
+            <table>
+                <thead>
+                    <tr><th>Strateji</th><th>Ne zaman iyi?</th><th>Ne zaman zayıf?</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Dense (embedding)</strong></td>
+                        <td>Anlamsal sorgular ("yapay zekanın faydaları"), paraphrase</td>
+                        <td>Özel isim/kod/kısaltma (BERT, FastAPI)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Sparse (BM25)</strong></td>
+                        <td>Tam eşleşme, isim, kısaltma, nadir terimler</td>
+                        <td>Eşanlamlı / paraphrase</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Hybrid (RRF)</strong></td>
+                        <td>Her ikisinin avantajı — production default</td>
+                        <td>Çok küçük top-k'da gereksiz</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>
+                <strong>Otomatik</strong> seçilirse hybrid kullanılır.
+                Şüphedeyseniz <code>auto</code> bırakın.
+            </p>
+
+            <h3>3. Reranker (Cross-encoder)</h3>
+            <p>
+                İlk retrieval'dan gelen aday belgeleri ikinci bir model
+                <em>(query, doc)</em> çifti üzerinden yeniden sıralar. Çok
+                daha doğru ama yavaş (~6-8 saniye ekler).
+            </p>
+            <ul>
+                <li><strong>Aç:</strong> Doğru cevabı bulamıyorsa, retrieval doğru kaynak getiriyor ama yanlış chunk seçiyorsa</li>
+                <li><strong>Kapat:</strong> Hız öncelikli demo, yaygın faktöel sorular</li>
+            </ul>
+            <div class="callout">
+                İlk açtığında ~400MB <code>bge-reranker-v2-m3</code> modeli
+                indirilir (tek seferlik). Sonra cache'lenir.
+            </div>
+
+            <h3>4. Memory (Sohbet Hafızası)</h3>
+            <p>
+                Çoklu turn sohbet için. Tek soru-cevap senaryosunda
+                <code>none</code> kalsın.
+            </p>
+            <table>
+                <thead>
+                    <tr><th>Strateji</th><th>Ne yapar?</th><th>İdeal</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Sliding window</strong></td>
+                        <td>Son 5 turn'ü ham olarak prompt'a ekler</td>
+                        <td>Kısa sohbet, deterministik</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Summary buffer</strong></td>
+                        <td>Eskileri LLM ile özetler, son 4'ü ham tutar</td>
+                        <td>Uzun sohbet, token tasarrufu</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Vector retrieval</strong></td>
+                        <td>Geçmişten semantik olarak alakalı turn'leri çeker</td>
+                        <td>50+ turn'lük uzun sohbetler</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>5. Context Engineering (Riskli — bilerek aç)</h3>
+            <p>
+                Eval baseline'larımızda <strong>top-k=5 + reranker</strong>
+                konfigine bu işlemcilerin değer katmadığı görüldü
+                (bkz. <code>docs/eval-history.md</code> v4). Default
+                <strong>kapalı</strong> — ne zaman açın:
+            </p>
+            <ul>
+                <li><strong>Dedup:</strong> Dense-only retrieval kullanıyorsanız (BM25 yok)</li>
+                <li><strong>Reorder (lost-in-the-middle):</strong> 10+ chunk veya 100+ sayfa PDF</li>
+                <li><strong>Token budget:</strong> API maliyeti kritikse</li>
+            </ul>
+
+            <h3>6. Provider & BYOK (Bring Your Own Key)</h3>
+            <p>
+                API anahtarınız <strong>sadece tarayıcınızda</strong> saklanır
+                (localStorage), sunucuya gönderilmez. Her istekte
+                <code>X-API-Key</code> header'ı ile geçer; sunucu hiç
+                saklamaz.
+            </p>
+            <p>Provider önerileri:</p>
+            <ul>
+                <li><strong>Groq</strong> — ücretsiz katman, <code>llama-3.3-70b-versatile</code>, hızlı. Test/showcase için ideal.</li>
+                <li><strong>DeepSeek</strong> — ucuz, Türkçe iyi</li>
+                <li><strong>OpenAI</strong> — gpt-4o-mini varsayılan, kalite üst düzey</li>
+                <li><strong>Ollama</strong> — local, key gerekmez (yerel kurulum şart)</li>
+                <li><strong>Local</strong> — fallback template, API key olmadan çalışır ama çok zayıf</li>
+            </ul>
+
+            <h3>7. Güvenlik — halüsinasyon koruması</h3>
+            <p>
+                Default'ta <strong>"Genel bilgi fallback'i" KAPALI</strong>.
+                Retrieval boş döndüğünde LLM kendi bilgisinden cevap
+                <em>üretmez</em> — bunun yerine "yeterli detay yok" mesajı
+                döner.
+            </p>
+            <div class="callout warn">
+                ⚠️ Açtığınızda LLM <em>özel isim, kuruluş, proprietary
+                içerik</em> için <strong>UYDURMA CEVAP</strong> verebilir.
+                Wikipedia tarzı kamu bilgisi soruyorsanız makul; özel/iç
+                veride <strong>kapalı tutun</strong>.
+            </div>
+
+            <h3>8. Multi-format yükleme</h3>
+            <p>Desteklenen: <code>.json</code> <code>.pdf</code> <code>.docx</code> <code>.md</code> <code>.txt</code></p>
+            <ul>
+                <li><strong>PDF:</strong> Sayfa-bazlı chunk; metin katmanı yoksa (taranmış) çıkarım yapılamaz</li>
+                <li><strong>DOCX:</strong> Paragraflar + tablolar (satır bazlı flatten)</li>
+                <li><strong>Markdown:</strong> Code fence'ler ve frontmatter temizlenir</li>
+                <li><strong>JSON:</strong> Liste / nested structure recursive extract</li>
+            </ul>
+            <p>
+                Yükleme sonrası <strong>Bilgi Tabanını Yeniden İndeksle</strong>
+                butonuna basmadan dosya retrieval'a girmez.
+            </p>
+
+            <h3>9. Vektör Veritabanı seçimi</h3>
+            <p>
+                Workspace oluştururken seçilir, sonradan Ayarlar'dan
+                değiştirilebilir (yeniden indeksleme gerektirir).
+            </p>
+            <ul>
+                <li><strong>ChromaDB</strong> (default) — sıfır setup, embed-only mode, tek dosya, kolay backup</li>
+                <li><strong>Qdrant</strong> — Rust-based, gelişmiş filter desteği. <code>pip install qdrant-client</code> sonra dropdown'da görünür</li>
+            </ul>
+            <div class="callout">
+                Daha fazla DB (Weaviate, Pinecone, Milvus, pgvector...) eklemek
+                için <code>BaseVectorStore</code>'u implement edip
+                <code>VectorStoreFactory.register()</code> çağırın — UI
+                otomatik tanır.
+            </div>
+
+            <h3>10. En verimli kullanım — özet</h3>
+            <ol>
+                <li><strong>Workspace oluştur</strong> (proje bazlı izolasyon)</li>
+                <li><strong>API key gir</strong> (Groq önerilir, ücretsiz)</li>
+                <li><strong>Dosyaları yükle + Yeniden İndeksle</strong></li>
+                <li><strong>Reranker'ı aç</strong> (yavaş ama doğruluk artar)</li>
+                <li><strong>Memory'i sohbet'e göre seç</strong> (tek soru → none)</li>
+                <li><strong>Halüsinasyon fallback'i kapalı tut</strong> (özel veri için)</li>
+                <li><strong>Cevap kaynaklarını tıkla</strong> — PDF'de doğru sayfa açılır</li>
+            </ol>
+
+            <h3>11. Sorun giderme</h3>
+            <ul>
+                <li><strong>"Collection [UUID] does not exist":</strong> Yeniden İndeksle</li>
+                <li><strong>"Kaynak bulunamadı" + cevap yok:</strong> Dosya yüklendi mi? Reindex'lendi mi? PDF taranmış mı?</li>
+                <li><strong>Header fetch hatası (ISO-8859-1):</strong> Çözüldü (base64 encoding); sayfayı yenile</li>
+                <li><strong>Reranker model indirme yavaş:</strong> İlk seferlik 400MB; sonra cache'li</li>
+            </ul>
+
+            <h3>12. Daha fazla teknik detay</h3>
+            <ul>
+                <li><code>docs/ARCHITECTURE.md</code> — 7 domain stratejisi + plugin contracts</li>
+                <li><code>docs/eval-history.md</code> — her özellik için ölçülmüş kazanım/regresyon</li>
+                <li><code>tests/evaluation/baselines/</code> — frozen baseline raporları (v0 → v4)</li>
+            </ul>
+        </section>
+
+        <!-- Landing view — workspace cards -->
+        <section id="landing-view" class="landing" style="display: none;">
+            <div class="landing-header">
+                <h2>Çalışma Alanların</h2>
+                <p>
+                    Her alan kendi dosyalarına ve vektör veritabanına sahiptir.
+                    NotebookLM gibi farklı projeler için ayrı bilgi tabanı tut.
+                </p>
+            </div>
+            <div class="workspace-grid" id="workspaceGrid">
+                <!-- Cards rendered by JS -->
+            </div>
+        </section>
+
+        <!-- App view wrapper — everything below becomes per-workspace -->
+        <div id="app-view">
 
         <!-- Tabs -->
         <nav class="tabs">
@@ -1248,6 +1813,51 @@
                 Dosya: <span class="mono" id="fileCount">—</span>
             </div>
         </footer>
+
+        </div><!-- /#app-view -->
+    </div>
+
+    <!-- Workspace create modal -->
+    <div class="modal-backdrop" id="createWorkspaceModal">
+        <div class="modal" role="dialog" aria-labelledby="createWsTitle">
+            <div class="modal-header">
+                <h2 id="createWsTitle">Yeni Çalışma Alanı</h2>
+                <button class="modal-close" id="createWsClose" aria-label="Kapat">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="newWsName">Ad</label>
+                    <input type="text" id="newWsName" class="form-input"
+                           placeholder="örn. CV Analizi" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="newWsDesc">
+                        Açıklama (opsiyonel)
+                    </label>
+                    <input type="text" id="newWsDesc" class="form-input"
+                           placeholder="kısa açıklama">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Renk</label>
+                    <div class="color-picker" id="colorPicker"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="newWsVectorDb">Vektör Veritabanı</label>
+                    <select id="newWsVectorDb" class="form-select"></select>
+                    <div class="form-hint" id="newWsVectorDbHint"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="createWsCancel">İptal</button>
+                <button class="btn btn-primary" id="createWsSubmit" style="width: auto; margin-top: 0;">Oluştur</button>
+            </div>
+        </div>
     </div>
 
     <!-- Settings modal -->
@@ -1302,6 +1912,50 @@
                 </div>
 
                 <div class="form-section">
+                    <div class="form-section-title">Prompt Stratejisi</div>
+                    <div class="form-group">
+                        <label class="form-label" style="cursor: pointer;">
+                            <span>Geliştirici modu</span>
+                            <input type="checkbox" id="devModeToggle"
+                                   style="width: auto; margin-left: 8px;">
+                        </label>
+                        <div class="form-hint">
+                            Açıldığında ileri stratejiler de görünür: Multi-Query
+                            (birden çok LLM çağrısı) ve Özel template
+                            ({question}/{context} placeholder'larıyla tam prompt).
+                            Default kapalı — normal kullanıcı için sade UI.
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="promptStrategySelect">Strateji</label>
+                        <select id="promptStrategySelect" class="form-select"></select>
+                        <div class="form-hint" id="promptStrategyHint"></div>
+                    </div>
+                    <div class="form-group" id="customRoleGroup" style="display: none;">
+                        <label class="form-label" for="customRoleInput">
+                            Uzman Rolü
+                            <span class="form-hint" style="margin: 0; font-size: 11px;">
+                                örn. "20 yıllık deneyimli bir hukuk danışmanısın..."
+                            </span>
+                        </label>
+                        <textarea id="customRoleInput" class="question-input"
+                                  style="min-height: 70px;" maxlength="1500"
+                                  placeholder="Sen [domain]'da uzman bir asistansın..."></textarea>
+                    </div>
+                    <div class="form-group" id="customTemplateGroup" style="display: none;">
+                        <label class="form-label" for="customTemplateInput">
+                            Özel Prompt Template
+                            <span class="form-hint" style="margin: 0; font-size: 11px;">
+                                {question}, {context}, {memory_context}
+                            </span>
+                        </label>
+                        <textarea id="customTemplateInput" class="question-input"
+                                  style="min-height: 120px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px;"
+                                  placeholder="Sen Türkçe konuşan bir asistansın.&#10;BAĞLAM: {context}&#10;SORU: {question}&#10;YANIT:"></textarea>
+                    </div>
+                </div>
+
+                <div class="form-section">
                     <div class="form-section-title">Retrieval Stratejisi</div>
                     <div class="form-group">
                         <label class="form-label" for="retrievalSelect">Yöntem</label>
@@ -1317,6 +1971,51 @@
                             Aday belgeleri cross-encoder ile yeniden sıralar.
                             İlk çağrıda ~400MB model indirir (cache'lenir).
                             Her sorguya ~500-1000ms ekler.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">Çalışma Alanı</div>
+                    <div id="wsInfoPanel" class="ws-info-panel">
+                        <div class="ws-info-row">
+                            <span>Aktif workspace</span>
+                            <strong id="wsInfoName">—</strong>
+                        </div>
+                        <div class="ws-info-row" style="margin-top: 4px;">
+                            <span>Vektör DB</span>
+                            <strong id="wsInfoVectorDb">—</strong>
+                        </div>
+                        <div class="ws-info-row" style="margin-top: 4px;">
+                            <span>Dosya sayısı</span>
+                            <strong id="wsInfoFileCount">—</strong>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="wsVectorDbSelect">
+                            Vektör Veritabanını Değiştir
+                        </label>
+                        <select id="wsVectorDbSelect" class="form-select"></select>
+                        <div class="form-hint" id="wsVectorDbHint" style="color: var(--warning);">
+                            ⚠️ DB değişimi yeniden indeksleme gerektirir
+                            (eski vektörler taşınmaz; yeni DB'de baştan
+                            embed'lenir).
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">Güvenlik</div>
+                    <div class="form-group">
+                        <label class="form-label" style="cursor: pointer;">
+                            <span>Genel bilgi fallback'i (halüsinasyon riski)</span>
+                            <input type="checkbox" id="allowGeneralKbToggle" style="width: auto; margin-left: 8px;">
+                        </label>
+                        <div class="form-hint" style="color: var(--warning);">
+                            ⚠️ Bilgi tabanında cevap yoksa LLM kendi genel
+                            bilgisinden cevap üretsin mi? <strong>Default kapalı.</strong>
+                            Açtığında özel isim, kuruluş veya proprietary
+                            içerikli sorularda LLM'in UYDURDUĞU cevap döner.
                         </div>
                     </div>
                 </div>
@@ -1449,6 +2148,11 @@
                 contextDedup: false,
                 contextReorder: false,
                 contextMaxTokens: null,
+                allowGeneralKb: false,
+                promptStrategy: 'direct',
+                customRole: '',
+                customPromptTemplate: '',
+                developerMode: false,
             };
         }
 
@@ -1558,6 +2262,9 @@
 
         function buildAuthHeaders() {
             const h = {};
+            // Always announce the active workspace so the backend routes
+            // /upload, /reindex, /ask etc. to the right RAG instance.
+            if (currentWorkspaceId) h['X-Workspace-Id'] = currentWorkspaceId;
             if (userSettings.provider) h['X-Provider'] = userSettings.provider;
             const key = currentApiKey();
             if (key) h['X-API-Key'] = key;
@@ -1580,6 +2287,22 @@
             }
             if (userSettings.contextMaxTokens) {
                 h['X-Context-Max-Tokens'] = String(userSettings.contextMaxTokens);
+            }
+            if (userSettings.allowGeneralKb) {
+                h['X-Allow-General-Knowledge'] = 'true';
+            }
+            if (userSettings.promptStrategy && userSettings.promptStrategy !== 'direct') {
+                h['X-Prompt-Strategy'] = userSettings.promptStrategy;
+            }
+            // Custom role / template may contain Turkish characters; base64
+            // the UTF-8 bytes the same way X-Conversation-History does.
+            if (userSettings.promptStrategy === 'role_based' && userSettings.customRole) {
+                const utf8 = unescape(encodeURIComponent(userSettings.customRole));
+                h['X-Custom-Role'] = 'b64:' + btoa(utf8);
+            }
+            if (userSettings.promptStrategy === 'custom' && userSettings.customPromptTemplate) {
+                const utf8 = unescape(encodeURIComponent(userSettings.customPromptTemplate));
+                h['X-Custom-Prompt'] = 'b64:' + btoa(utf8);
             }
             if (userSettings.memoryStrategy && userSettings.memoryStrategy !== 'none') {
                 h['X-Memory-Strategy'] = userSettings.memoryStrategy;
@@ -1664,6 +2387,76 @@
                 const v = parseInt(maxTokEl.value, 10);
                 userSettings.contextMaxTokens = (!isNaN(v) && v >= 64) ? v : null;
             });
+
+            // Prompt strategy selector — gated by developer mode.
+            // Advanced strategies (is_advanced=true on the backend) only appear
+            // in the dropdown when the dev-mode toggle is ON; otherwise the
+            // average user sees a curated 4-option list.
+            const psel = document.getElementById('promptStrategySelect');
+            const phint = document.getElementById('promptStrategyHint');
+            const devToggle = document.getElementById('devModeToggle');
+            const customRoleGroup = document.getElementById('customRoleGroup');
+            const customTemplateGroup = document.getElementById('customTemplateGroup');
+            const customRoleInput = document.getElementById('customRoleInput');
+            const customTemplateInput = document.getElementById('customTemplateInput');
+            const promptStrategies = settingsSchema.prompt_strategies || [];
+
+            devToggle.checked = !!userSettings.developerMode;
+            customRoleInput.value = userSettings.customRole || '';
+            customTemplateInput.value = userSettings.customPromptTemplate || '';
+
+            function rebuildStrategyDropdown() {
+                const visible = promptStrategies.filter(s =>
+                    !s.is_advanced || userSettings.developerMode
+                );
+                psel.innerHTML = visible
+                    .map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
+                    .join('');
+                // Preserve current selection if still visible; otherwise fall
+                // back to 'direct'. Prevents the user being silently switched
+                // when they toggle dev mode off while on an advanced option.
+                const stillVisible = visible.find(s => s.id === userSettings.promptStrategy);
+                if (!stillVisible) {
+                    userSettings.promptStrategy = 'direct';
+                }
+                psel.value = userSettings.promptStrategy;
+                updatePromptStrategyUI();
+            }
+
+            function updatePromptStrategyUI() {
+                const sel = promptStrategies.find(x => x.id === psel.value);
+                phint.innerHTML = sel ? escapeHtml(sel.description) : '';
+                if (sel && sel.is_multi_call) {
+                    phint.innerHTML += ' <strong>(birden çok LLM çağrısı)</strong>';
+                }
+                customRoleGroup.style.display = psel.value === 'role_based' ? 'block' : 'none';
+                customTemplateGroup.style.display = psel.value === 'custom' ? 'block' : 'none';
+            }
+
+            rebuildStrategyDropdown();
+            psel.addEventListener('change', () => {
+                userSettings.promptStrategy = psel.value;
+                updatePromptStrategyUI();
+            });
+            devToggle.addEventListener('change', () => {
+                userSettings.developerMode = devToggle.checked;
+                rebuildStrategyDropdown();
+            });
+            customRoleInput.addEventListener('input', () => {
+                userSettings.customRole = customRoleInput.value;
+            });
+            customTemplateInput.addEventListener('input', () => {
+                userSettings.customPromptTemplate = customTemplateInput.value;
+            });
+
+            // Hallucination opt-in (safe default = OFF)
+            const fbToggle = document.getElementById('allowGeneralKbToggle');
+            if (fbToggle) {
+                fbToggle.checked = !!userSettings.allowGeneralKb;
+                fbToggle.addEventListener('change', () => {
+                    userSettings.allowGeneralKb = fbToggle.checked;
+                });
+            }
 
             // Memory strategy
             const msel = document.getElementById('memorySelect');
@@ -1761,6 +2554,7 @@
         settingsToggle.addEventListener('click', () => {
             settingsModal.classList.add('open');
             if (!settingsSchema) loadSettingsSchema();
+            refreshWorkspaceInfoPanel();
         });
         document.getElementById('settingsClose').addEventListener('click', () => {
             settingsModal.classList.remove('open');
@@ -1928,10 +2722,23 @@
                 formData.append('file', file);
 
                 try {
-                    const response = await fetch('/upload', { method: 'POST', body: formData });
+                    // X-Workspace-Id routes upload to the active workspace.
+                    // FormData uploads can't share buildAuthHeaders() wholesale
+                    // (Content-Type must be left for the browser), but the
+                    // workspace header is plain ASCII and safe to forward.
+                    const headers = {};
+                    if (currentWorkspaceId) headers['X-Workspace-Id'] = currentWorkspaceId;
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        headers,
+                        body: formData,
+                    });
                     const result = await response.json();
                     if (result.success) {
                         showToast(`${file.name} yüklendi`);
+                        if (result.warning) {
+                            showToast(result.warning, 'error');
+                        }
                     } else {
                         showToast(result.error || 'Yükleme başarısız', 'error');
                     }
@@ -1945,7 +2752,7 @@
         // ---------- File list ----------
         async function loadFiles() {
             try {
-                const response = await fetch('/list-files');
+                const response = await fetch('/list-files', { headers: buildAuthHeaders() });
                 const data = await response.json();
 
                 const fileList = document.getElementById('fileList');
@@ -1997,7 +2804,7 @@
             try {
                 const response = await fetch('/delete-file', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...buildAuthHeaders() },
                     body: JSON.stringify({ filename })
                 });
                 const result = await response.json();
@@ -2020,10 +2827,22 @@
             reindexBtn.innerHTML = '<span class="spinner"></span> Yeniden indeksleniyor...';
 
             try {
-                const response = await fetch('/reindex', { method: 'POST' });
+                const response = await fetch('/reindex', {
+                    method: 'POST',
+                    headers: buildAuthHeaders(),
+                });
                 const result = await response.json();
                 if (result.success) {
                     showToast(`${result.document_count} belge yeniden indekslendi`);
+                    // Refresh the workspace list so the card on the landing
+                    // page reflects the new file_count after reindex.
+                    await loadWorkspaces();
+                    // And clear the "empty workspace" placeholder on the
+                    // Ask tab so the user knows they can now ask.
+                    showAnswerPlaceholder(
+                        "İndeksleme tamamlandı. 'Soru Sor' sekmesinden " +
+                        "sorunuzu yazıp <kbd>Ctrl</kbd>+<kbd>Enter</kbd>'a basın."
+                    );
                 } else {
                     showToast(result.error || 'İndeksleme başarısız', 'error');
                 }
@@ -2113,7 +2932,7 @@
         // ---------- System status ----------
         async function checkStatus() {
             try {
-                const response = await fetch('/status');
+                const response = await fetch('/status', { headers: buildAuthHeaders() });
                 const status = await response.json();
                 const statusEl = document.getElementById('systemStatus');
 
@@ -2138,11 +2957,391 @@
             }
         }
 
-        // ---------- Init ----------
-        document.addEventListener('DOMContentLoaded', () => {
-            checkStatus();
+        // ---------- Workspaces ----------
+        // Each workspace is an isolated knowledge base (own files, own
+        // vector DB). The active id is persisted so a reload brings the
+        // user back to where they were. The empty string means "show the
+        // landing page" — user hasn't picked one yet (first visit).
+        const WORKSPACE_KEY = 'ragart-active-workspace';
+        let currentWorkspaceId = localStorage.getItem(WORKSPACE_KEY) || '';
+        let workspaceList = [];
+        let vectorStoreOptions = [];
+        const COLOR_OPTIONS = [
+            '#6d5cf0', '#4f9a6a', '#c69143', '#c25a5a',
+            '#4a90c2', '#9b6dc2', '#5fa896', '#c2965a',
+        ];
+        let selectedColor = COLOR_OPTIONS[0];
+
+        async function loadWorkspaces() {
+            try {
+                const r = await fetch('/workspaces');
+                const data = await r.json();
+                workspaceList = data.workspaces || [];
+                vectorStoreOptions = data.vector_stores || [];
+                return data;
+            } catch (e) {
+                console.error('Workspace load failed', e);
+                workspaceList = [];
+                vectorStoreOptions = [];
+                return null;
+            }
+        }
+
+        function renderWorkspaceGrid() {
+            const grid = document.getElementById('workspaceGrid');
+            if (!grid) return;
+            const cards = workspaceList.map(ws => {
+                const isDefault = ws.id === 'default';
+                const fileText = `${ws.file_count || 0} dosya`;
+                const deleteBtn = isDefault ? '' : `
+                    <button class="ws-card-delete" data-ws-delete="${escapeHtml(ws.id)}"
+                            title="Sil" aria-label="Sil">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
+                        </svg>
+                    </button>`;
+                return `
+                    <div class="ws-card" data-ws-id="${escapeHtml(ws.id)}"
+                         style="border-left-color: ${escapeHtml(ws.color || '#6d5cf0')};">
+                        ${deleteBtn}
+                        <div class="ws-card-title">${escapeHtml(ws.name)}</div>
+                        <div class="ws-card-desc">${escapeHtml(ws.description || '—')}</div>
+                        <div class="ws-card-meta">
+                            <span class="meta-badge">${(ws.vector_db || 'chroma').toUpperCase()}</span>
+                            <span>${fileText}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            const addCard = `
+                <div class="ws-card ws-card-new" id="wsCreateCard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    <span>Yeni Çalışma Alanı</span>
+                </div>
+            `;
+            grid.innerHTML = cards + addCard;
+
+            // Wire interactions
+            grid.querySelectorAll('.ws-card[data-ws-id]').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    if (e.target.closest('.ws-card-delete')) return;
+                    enterWorkspace(el.dataset.wsId);
+                });
+            });
+            grid.querySelectorAll('[data-ws-delete]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.wsDelete;
+                    if (!confirm(`'${id}' çalışma alanını ve tüm dosyalarını sil?`)) return;
+                    try {
+                        const r = await fetch(`/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                        if (!r.ok) {
+                            const body = await r.json().catch(() => ({}));
+                            showToast(body.error || 'Silinemedi', 'error');
+                            return;
+                        }
+                        if (currentWorkspaceId === id) {
+                            currentWorkspaceId = '';
+                            localStorage.removeItem(WORKSPACE_KEY);
+                        }
+                        await refreshWorkspacesUI();
+                        showToast('Çalışma alanı silindi');
+                    } catch {
+                        showToast('Silme hatası', 'error');
+                    }
+                });
+            });
+            document.getElementById('wsCreateCard')?.addEventListener('click', openCreateModal);
+        }
+
+        function enterWorkspace(wsId) {
+            currentWorkspaceId = wsId;
+            localStorage.setItem(WORKSPACE_KEY, wsId);
+            showAppView();
+            // If the workspace is empty (newly created OR all files deleted),
+            // start the user on the Files tab so the next action is obvious.
+            // We have an authoritative file_count from /workspaces already.
+            const ws = workspaceList.find(w => w.id === wsId);
+            const empty = !ws || (ws.file_count || 0) === 0;
+            if (empty) {
+                switchToTab('files');
+                showAnswerPlaceholder(
+                    "Bu çalışma alanı henüz boş. '<strong>Dosyaları Yönet</strong>' " +
+                    "sekmesinden bir veya birkaç dosya yükleyin, sonra '<strong>" +
+                    "Bilgi Tabanını Yeniden İndeksle</strong>' butonuna basın. " +
+                    "İndeksleme bittiğinde buradan soru sorabilirsiniz."
+                );
+            } else {
+                showAnswerPlaceholder(
+                    "Sorunuzu yazın, 'Soruyu Sor' butonuna veya " +
+                    "<kbd>Ctrl</kbd>+<kbd>Enter</kbd>'a basın."
+                );
+            }
             loadFiles();
+            checkStatus();
+        }
+
+        function switchToTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+            const pane = document.getElementById(tabName + '-tab');
+            if (btn) btn.classList.add('active');
+            if (pane) pane.classList.add('active');
+        }
+
+        function showAnswerPlaceholder(htmlMessage) {
+            const el = document.getElementById('answerContent');
+            if (!el) return;
+            el.className = 'answer-content empty';
+            el.innerHTML = htmlMessage;
+            const sources = document.getElementById('sourcesContent');
+            if (sources) {
+                sources.className = 'empty-state';
+                sources.innerHTML = 'Henüz kaynak yok. Bir soru sorduğunuzda burada görünür.';
+            }
+        }
+
+        function showLandingView() {
+            document.getElementById('landing-view').style.display = 'block';
+            document.getElementById('app-view').style.display = 'none';
+            document.getElementById('backToLanding').style.display = 'none';
+            document.getElementById('activeWorkspaceBadge').style.display = 'none';
+        }
+
+        function showAppView() {
+            document.getElementById('landing-view').style.display = 'none';
+            document.getElementById('app-view').style.display = '';
+            document.getElementById('backToLanding').style.display = 'inline-flex';
+            const ws = workspaceList.find(w => w.id === currentWorkspaceId);
+            const badge = document.getElementById('activeWorkspaceBadge');
+            if (ws) {
+                badge.textContent = ws.name;
+                badge.style.background = (ws.color || '#6d5cf0') + '22';
+                badge.style.color = ws.color || '#6d5cf0';
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        async function refreshWorkspacesUI() {
+            await loadWorkspaces();
+            renderWorkspaceGrid();
+            // Validate current selection — server may have deleted it
+            if (currentWorkspaceId &&
+                !workspaceList.find(w => w.id === currentWorkspaceId)) {
+                currentWorkspaceId = '';
+                localStorage.removeItem(WORKSPACE_KEY);
+            }
+            if (currentWorkspaceId) {
+                showAppView();
+            } else {
+                showLandingView();
+            }
+        }
+
+        document.getElementById('backToLanding').addEventListener('click', () => {
+            currentWorkspaceId = '';
+            localStorage.removeItem(WORKSPACE_KEY);
+            refreshWorkspacesUI();
+        });
+
+        // ---------- Help view (top-right ? button) ----------
+        // Toggleable third view (alongside landing + app). The button stays
+        // visible everywhere so the user can pop the guide open mid-task.
+        const helpView = document.getElementById('help-view');
+        let helpOpen = false;
+        let preHelpState = null;  // remember what was visible before opening help
+
+        document.getElementById('helpToggle').addEventListener('click', () => {
+            if (helpOpen) {
+                closeHelp();
+            } else {
+                openHelp();
+            }
+        });
+
+        function openHelp() {
+            preHelpState = {
+                landing: document.getElementById('landing-view').style.display,
+                app: document.getElementById('app-view').style.display,
+            };
+            document.getElementById('landing-view').style.display = 'none';
+            document.getElementById('app-view').style.display = 'none';
+            helpView.style.display = 'block';
+            helpOpen = true;
+            // Scroll to top in case the previous scroll was deep inside the app
+            window.scrollTo(0, 0);
+        }
+
+        function closeHelp() {
+            helpView.style.display = 'none';
+            if (preHelpState) {
+                document.getElementById('landing-view').style.display = preHelpState.landing;
+                document.getElementById('app-view').style.display = preHelpState.app;
+            } else if (currentWorkspaceId) {
+                showAppView();
+            } else {
+                showLandingView();
+            }
+            helpOpen = false;
+        }
+
+        // ---------- Settings: workspace info panel + vector DB switch ----------
+        function refreshWorkspaceInfoPanel() {
+            const ws = workspaceList.find(w => w.id === currentWorkspaceId);
+            if (!ws) return;
+            document.getElementById('wsInfoName').textContent = ws.name;
+            document.getElementById('wsInfoVectorDb').textContent = (ws.vector_db || 'chroma').toUpperCase();
+            document.getElementById('wsInfoFileCount').textContent = ws.file_count ?? '—';
+
+            const sel = document.getElementById('wsVectorDbSelect');
+            const opts = vectorStoreOptions.length ? vectorStoreOptions : [
+                { id: 'chroma', label: 'ChromaDB (default)', desc: '' }
+            ];
+            sel.innerHTML = opts.map(v =>
+                `<option value="${escapeHtml(v.id)}">${escapeHtml(v.label)}</option>`
+            ).join('');
+            sel.value = ws.vector_db || 'chroma';
+        }
+
+        document.getElementById('wsVectorDbSelect').addEventListener('change', async (e) => {
+            const newDb = e.target.value;
+            const ws = workspaceList.find(w => w.id === currentWorkspaceId);
+            if (!ws || newDb === ws.vector_db) return;
+            const ok = confirm(
+                `Vektör veritabanını ${ws.vector_db.toUpperCase()} → ${newDb.toUpperCase()} ` +
+                `olarak değiştir? Bu işlem sonrası Bilgi Tabanını Yeniden ` +
+                `İndeksle butonuna basmanız gerekir.`
+            );
+            if (!ok) {
+                e.target.value = ws.vector_db;
+                return;
+            }
+            try {
+                const r = await fetch(`/workspaces/${encodeURIComponent(ws.id)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ vector_db: newDb }),
+                });
+                if (!r.ok) {
+                    const body = await r.json().catch(() => ({}));
+                    showToast(body.error || 'Değişiklik başarısız', 'error');
+                    e.target.value = ws.vector_db;
+                    return;
+                }
+                await loadWorkspaces();
+                refreshWorkspaceInfoPanel();
+                showToast('DB değişti — lütfen yeniden indeksleyin');
+            } catch {
+                showToast('İstek başarısız', 'error');
+                e.target.value = ws.vector_db;
+            }
+        });
+
+        // ----- Create modal -----
+        const createModal = document.getElementById('createWorkspaceModal');
+
+        function openCreateModal() {
+            // Reset form
+            document.getElementById('newWsName').value = '';
+            document.getElementById('newWsDesc').value = '';
+            selectedColor = COLOR_OPTIONS[0];
+            renderColorPicker();
+            renderVectorDbSelect();
+            createModal.classList.add('open');
+            setTimeout(() => document.getElementById('newWsName').focus(), 50);
+        }
+
+        function renderColorPicker() {
+            const picker = document.getElementById('colorPicker');
+            picker.innerHTML = COLOR_OPTIONS.map(c => `
+                <button type="button" class="color-swatch${c === selectedColor ? ' selected' : ''}"
+                        data-color="${c}" style="background: ${c};"
+                        aria-label="Renk ${c}"></button>
+            `).join('');
+            picker.querySelectorAll('.color-swatch').forEach(el => {
+                el.addEventListener('click', () => {
+                    selectedColor = el.dataset.color;
+                    renderColorPicker();
+                });
+            });
+        }
+
+        function renderVectorDbSelect() {
+            const sel = document.getElementById('newWsVectorDb');
+            const hint = document.getElementById('newWsVectorDbHint');
+            const opts = vectorStoreOptions.length ? vectorStoreOptions : [
+                { id: 'chroma', label: 'ChromaDB (default)',
+                  desc: 'Local, embed-only.' }
+            ];
+            sel.innerHTML = opts.map(v =>
+                `<option value="${escapeHtml(v.id)}">${escapeHtml(v.label)}</option>`
+            ).join('');
+            const updateHint = () => {
+                const v = opts.find(x => x.id === sel.value);
+                hint.textContent = v ? v.desc : '';
+            };
+            updateHint();
+            sel.onchange = updateHint;
+        }
+
+        document.getElementById('createWsClose').addEventListener('click',
+            () => createModal.classList.remove('open'));
+        document.getElementById('createWsCancel').addEventListener('click',
+            () => createModal.classList.remove('open'));
+        createModal.addEventListener('click', (e) => {
+            if (e.target === createModal) createModal.classList.remove('open');
+        });
+
+        document.getElementById('createWsSubmit').addEventListener('click', async () => {
+            const name = document.getElementById('newWsName').value.trim();
+            if (!name) {
+                showToast('İsim boş olamaz', 'error');
+                return;
+            }
+            const payload = {
+                name,
+                description: document.getElementById('newWsDesc').value.trim(),
+                color: selectedColor,
+                vector_db: document.getElementById('newWsVectorDb').value,
+            };
+            try {
+                const r = await fetch('/workspaces', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!r.ok) {
+                    const body = await r.json().catch(() => ({}));
+                    showToast(body.error || 'Oluşturulamadı', 'error');
+                    return;
+                }
+                const body = await r.json();
+                createModal.classList.remove('open');
+                showToast('Çalışma alanı oluşturuldu');
+                await loadWorkspaces();
+                enterWorkspace(body.workspace.id);
+            } catch {
+                showToast('İstek başarısız', 'error');
+            }
+        });
+
+        // ---------- Init ----------
+        document.addEventListener('DOMContentLoaded', async () => {
             loadSettingsSchema();
+            await refreshWorkspacesUI();
+            if (currentWorkspaceId) {
+                checkStatus();
+                loadFiles();
+            }
         });
     </script>
 </body>

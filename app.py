@@ -17,6 +17,8 @@ from src.document_loader import create_sample_data
 from src.llm_providers import LLMProviderFactory
 from src.memory import ConversationTurn
 from src.utils import get_logger, StatusEmoji, setup_logging
+from src.workspaces import WorkspaceManager, DEFAULT_WORKSPACE_ID
+from src.vector_stores import VectorStoreFactory
 from config.settings import settings
 from config.settings_schema import (
     get_settings_schema,
@@ -42,56 +44,84 @@ def allowed_file(filename: str) -> bool:
     """Check if file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Global state
-rag_system = None
+# ----- Global state — workspaces + lazy RAG cache -----
+#
+# Workspaces are NotebookLM-style isolated knowledge bases. Each workspace
+# has its own data folder and ChromaDB collection. We keep one RAG
+# instance per workspace (lazily created on first use) so the embedder
+# model can be shared while the vector store is separate.
+
+workspace_manager = WorkspaceManager(settings.DATA_FOLDER)
+_rag_cache: dict = {}
+_rag_init_lock = threading.Lock()
+
+# Sample data seeding: ensure the default workspace has SOMETHING
+_default_files_dir = workspace_manager.files_dir(DEFAULT_WORKSPACE_ID)
+if not any(_default_files_dir.iterdir()):
+    create_sample_data(str(_default_files_dir))
+
 system_ready = False
 system_status = "Initializing..."
 initialization_error = None
 
 
-def initialize_rag_system() -> None:
-    """Initialize the RAG system in the background."""
-    global rag_system, system_ready, system_status, initialization_error
-    
+def _build_rag_for_workspace(workspace_id: str) -> TurkishRAGSystem:
+    """Build (or retrieve) a fresh RAG instance scoped to a workspace."""
+    ws = workspace_manager.get(workspace_id)
+    if ws is None:
+        workspace_id = workspace_manager.resolve(workspace_id)
+        ws = workspace_manager.get(workspace_id)
+
+    api_key = settings.get_api_key()
+    model_type = settings.MODEL_TYPE
+    if model_type in ("deepseek", "openai", "groq", "huggingface") and not api_key:
+        logger.warning(
+            f"{StatusEmoji.WARNING} No API key found, falling back to local model"
+        )
+        model_type = "local"
+
+    persist_path = workspace_manager.vector_db_path(workspace_id, ws.vector_db)
+    rag = TurkishRAGSystem(
+        data_folder=str(workspace_manager.files_dir(workspace_id)),
+        model_type=model_type,
+        api_key=api_key,
+        chroma_db_path=str(persist_path),
+    )
+    rag.initialize()
+    return rag
+
+
+def get_rag_for(workspace_id: str) -> TurkishRAGSystem:
+    """Return the cached RAG for a workspace, building lazily under lock."""
+    workspace_id = workspace_manager.resolve(workspace_id)
+    if workspace_id in _rag_cache:
+        return _rag_cache[workspace_id]
+    with _rag_init_lock:
+        if workspace_id not in _rag_cache:
+            _rag_cache[workspace_id] = _build_rag_for_workspace(workspace_id)
+    return _rag_cache[workspace_id]
+
+
+def invalidate_rag(workspace_id: str) -> None:
+    """Force the next get_rag_for() call to rebuild the cache entry."""
+    _rag_cache.pop(workspace_id, None)
+
+
+def _current_workspace_id() -> str:
+    """Pull the active workspace id from the request header (or default)."""
+    return workspace_manager.resolve(request.headers.get("X-Workspace-Id"))
+
+
+def initialize_default_workspace() -> None:
+    """Warm-start the default workspace's RAG in the background."""
+    global system_ready, system_status, initialization_error
     try:
         system_status = "Checking data files..."
-        logger.info(f"{StatusEmoji.ROCKET} Initializing RAG system...")
-        
-        # Ensure data folder exists
-        if not os.path.exists(settings.DATA_FOLDER):
-            os.makedirs(settings.DATA_FOLDER)
-            create_sample_data(settings.DATA_FOLDER)
-        
-        # Check for JSON files
-        json_files = [f for f in os.listdir(settings.DATA_FOLDER) if f.endswith('.json')]
-        if not json_files:
-            create_sample_data(settings.DATA_FOLDER)
-        
-        system_status = "Creating vector store..."
-        
-        # Determine API key and model type
-        api_key = settings.get_api_key()
-        model_type = settings.MODEL_TYPE
-        
-        if model_type in ("deepseek", "openai") and not api_key:
-            logger.warning(f"{StatusEmoji.WARNING} No API key found, falling back to local model")
-            model_type = "local"
-        
-        # Create RAG system
-        rag_system = TurkishRAGSystem(
-            data_folder=settings.DATA_FOLDER,
-            model_type=model_type,
-            api_key=api_key,
-            chroma_db_path=settings.CHROMA_DB_PATH
-        )
-        
-        system_status = "Processing documents..."
-        rag_system.initialize()
-        
+        logger.info(f"{StatusEmoji.ROCKET} Initializing default workspace RAG...")
+        get_rag_for(DEFAULT_WORKSPACE_ID)
         system_status = "Ready"
         system_ready = True
-        logger.info(f"{StatusEmoji.SUCCESS} RAG system ready! Model: {model_type}")
-        
+        logger.info(f"{StatusEmoji.SUCCESS} Default workspace ready")
     except Exception as e:
         initialization_error = str(e)
         system_status = f"Error: {str(e)}"
@@ -99,8 +129,7 @@ def initialize_rag_system() -> None:
         logger.error(f"{StatusEmoji.ERROR} Initialization error: {e}")
 
 
-# Start initialization in background thread
-init_thread = threading.Thread(target=initialize_rag_system, daemon=True)
+init_thread = threading.Thread(target=initialize_default_workspace, daemon=True)
 init_thread.start()
 
 
@@ -113,12 +142,15 @@ def index():
 
 @app.route("/status")
 def get_status():
-    """Get system status."""
+    """Get system status (for the current workspace if header is set)."""
+    ws_id = workspace_manager.resolve(request.headers.get("X-Workspace-Id"))
+    rag = _rag_cache.get(ws_id)
     return jsonify({
-        "ready": system_ready,
+        "ready": system_ready and (rag is not None or ws_id == DEFAULT_WORKSPACE_ID),
         "status": system_status,
         "error": initialization_error,
-        "model_type": rag_system.model_type if rag_system else "unknown"
+        "model_type": rag.model_type if rag else "unknown",
+        "workspace_id": ws_id,
     })
 
 
@@ -166,7 +198,14 @@ def ask_question():
 
         history = [ConversationTurn.from_dict(t) for t in req_settings.history]
 
-        result = rag_system.ask(
+        # Resolve the workspace this request targets — lazy-create RAG.
+        ws_id = _current_workspace_id()
+        try:
+            rag = get_rag_for(ws_id)
+        except Exception as e:
+            return jsonify({"error": f"Workspace init failed: {e}"}), 500
+
+        result = rag.ask(
             question,
             k=settings.TOP_K_DOCUMENTS,
             llm_provider=llm_override,
@@ -179,6 +218,10 @@ def ask_question():
             deduplicate_context=req_settings.deduplicate_context,
             reorder_context=req_settings.reorder_context,
             max_context_tokens=req_settings.max_context_tokens,
+            allow_general_knowledge_fallback=req_settings.allow_general_knowledge_fallback,
+            prompt_strategy=req_settings.prompt_strategy,
+            custom_role=req_settings.custom_role,
+            custom_prompt_template=req_settings.custom_prompt_template,
         )
         
         # Check for errors
@@ -217,21 +260,22 @@ def ask_question():
 
 @app.route("/test")
 def test_system():
-    """Run system tests."""
+    """Run system tests against the active workspace."""
     if not system_ready:
         return jsonify({"error": "System not ready"}), 503
-    
+
+    rag = get_rag_for(_current_workspace_id())
     test_questions = [
         "Algoritma nedir?",
         "Python hakkında ne biliyorsun?",
         "Yapay zeka ile ilgili bilgiler neler?",
-        "Veri yapıları nedir?"
+        "Veri yapıları nedir?",
     ]
-    
+
     results = []
     for question in test_questions:
         try:
-            result = rag_system.ask(question)
+            result = rag.ask(question)
             results.append({
                 "question": question,
                 "answer": result["answer"][:200] + "..." if len(result["answer"]) > 200 else result["answer"],
@@ -250,25 +294,26 @@ def test_system():
 
 @app.route("/data-info")
 def get_data_info():
-    """Get information about loaded data."""
+    """Get information about loaded data in the active workspace."""
     if not system_ready:
         return jsonify({"error": "System not ready"}), 503
-    
+
     try:
-        file_info = rag_system.document_loader.get_file_info()
-        
+        rag = get_rag_for(_current_workspace_id())
+        file_info = rag.document_loader.get_file_info()
+
         total_documents = sum(
-            f.get("document_count", 0) for f in file_info 
+            f.get("document_count", 0) for f in file_info
             if "error" not in f
         )
-        
+
         return jsonify({
             "files": file_info,
             "total_files": len(file_info),
             "total_documents": total_documents,
-            "model_type": rag_system.model_type
+            "model_type": rag.model_type,
         })
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -319,21 +364,25 @@ def settings_schema():
 @app.route("/health")
 def health_check():
     """Health check endpoint."""
+    ws_id = _current_workspace_id()
+    rag = _rag_cache.get(ws_id)
     return jsonify({
         "status": "healthy",
         "system_ready": system_ready,
-        "model_type": rag_system.model_type if rag_system else "unknown",
-        "api_available": bool(rag_system and rag_system.api_key) if rag_system else False
+        "model_type": rag.model_type if rag else "unknown",
+        "api_available": bool(rag and rag.api_key) if rag else False,
+        "active_workspace": ws_id,
     })
 
 
 @app.route("/stats")
 def get_stats():
-    """Get system statistics."""
+    """Get system statistics for the active workspace."""
     if not system_ready:
         return jsonify({"error": "System not ready"}), 503
-    
-    return jsonify(rag_system.get_stats())
+
+    rag = get_rag_for(_current_workspace_id())
+    return jsonify(rag.get_stats())
 
 
 @app.route("/upload", methods=["POST"])
@@ -353,10 +402,11 @@ def upload_file():
         }), 400
     
     filepath = None
+    ws_id = _current_workspace_id()
     try:
         filename = secure_filename(file.filename)
-        os.makedirs(settings.DATA_FOLDER, exist_ok=True)
-        filepath = os.path.join(settings.DATA_FOLDER, filename)
+        ws_files_dir = workspace_manager.files_dir(ws_id)
+        filepath = str(ws_files_dir / filename)
         file.save(filepath)
 
         # Format-specific validation: try to load with the matching loader.
@@ -386,15 +436,27 @@ def upload_file():
             )
 
         logger.info(
-            f"{StatusEmoji.SUCCESS} File uploaded: {filename} "
+            f"{StatusEmoji.SUCCESS} File uploaded to ws={ws_id}: {filename} "
             f"(format={loader.name}, {len(docs)} documents)"
         )
+        workspace_manager.touch(ws_id)
+
+        warning = None
+        if not docs:
+            warning = (
+                f"'{filename}' başarıyla yüklendi ama PDF/DOCX/MD/TXT'den "
+                "metin çıkarılamadı (taranmış / boş içerik olabilir). "
+                "Bu dosya reindex'e dahil olsa bile retrieval için boş "
+                "kalır."
+            )
 
         return jsonify({
             "success": True,
             "filename": filename,
             "format": loader.name,
             "document_count": len(docs),
+            "workspace_id": ws_id,
+            "warning": warning,
             "message": (
                 f"File '{filename}' uploaded successfully. "
                 "Use /reindex to update the knowledge base."
@@ -422,14 +484,16 @@ def delete_file():
     
     # Secure the filename to prevent path traversal
     filename = secure_filename(filename)
-    filepath = os.path.join(settings.DATA_FOLDER, filename)
-    
+    ws_id = _current_workspace_id()
+    filepath = str(workspace_manager.files_dir(ws_id) / filename)
+
     if not os.path.exists(filepath):
         return jsonify({"error": "File not found"}), 404
-    
+
     try:
         os.remove(filepath)
-        logger.info(f"{StatusEmoji.SUCCESS} File deleted: {filename}")
+        workspace_manager.touch(ws_id)
+        logger.info(f"{StatusEmoji.SUCCESS} File deleted from ws={ws_id}: {filename}")
         
         return jsonify({
             "success": True,
@@ -443,29 +507,37 @@ def delete_file():
 
 @app.route("/reindex", methods=["POST"])
 def reindex_documents():
-    """Rebuild the vector store with current documents."""
-    global rag_system, system_ready, system_status
-    
+    """Rebuild the vector store for the active workspace only."""
+    global system_ready, system_status
+
+    ws_id = _current_workspace_id()
     try:
-        system_status = "Reindexing documents..."
+        system_status = f"Reindexing workspace '{ws_id}'..."
         system_ready = False
-        
-        logger.info(f"{StatusEmoji.LOADING} Reindexing documents...")
-        
-        # Reinitialize the vector store
-        rag_system.create_vector_store()
-        
+
+        logger.info(f"{StatusEmoji.LOADING} Reindexing ws={ws_id}...")
+        rag = get_rag_for(ws_id)
+        rag.create_vector_store()
+        workspace_manager.touch(ws_id)
+
+        # Invalidate response & semantic caches — knowledge base changed,
+        # old answers may be stale. Embedding cache is kept (embeddings
+        # are model-level, not data-level).
+        rag.response_cache.clear()
+        rag.semantic_cache.clear()
+
         system_status = "Ready"
         system_ready = True
-        
-        logger.info(f"{StatusEmoji.SUCCESS} Reindexing complete!")
-        
+
+        logger.info(f"{StatusEmoji.SUCCESS} Reindexing complete for ws={ws_id}!")
+
         return jsonify({
             "success": True,
             "message": "Knowledge base reindexed successfully.",
-            "document_count": rag_system.document_loader.document_count
+            "document_count": rag.document_loader.document_count,
+            "workspace_id": ws_id,
         })
-        
+
     except Exception as e:
         system_status = f"Error: {str(e)}"
         logger.error(f"{StatusEmoji.ERROR} Reindex error: {e}")
@@ -474,25 +546,176 @@ def reindex_documents():
 
 @app.route("/list-files")
 def list_files():
-    """List all supported files in the knowledge base."""
+    """List all supported files in the active workspace."""
     try:
-        if not os.path.exists(settings.DATA_FOLDER):
+        ws_id = _current_workspace_id()
+        files_dir = workspace_manager.files_dir(ws_id)
+        if not files_dir.exists():
             return jsonify({"files": [], "total": 0})
 
         # Delegate to the document loader's get_file_info — it already
         # walks every supported extension and is unit tested.
         from src.document_loader import JSONDocumentLoader
-        loader = JSONDocumentLoader(settings.DATA_FOLDER)
+        loader = JSONDocumentLoader(str(files_dir))
         files = loader.get_file_info()
 
         return jsonify({
             "files": files,
             "total": len(files),
             "supported_extensions": sorted(ALLOWED_EXTENSIONS),
+            "workspace_id": ws_id,
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ---------- Cache endpoints ----------
+
+@app.route("/cache/stats")
+def cache_stats():
+    """Return hit/miss statistics for all cache layers."""
+    if not system_ready:
+        return jsonify({"error": "System not ready"}), 503
+
+    try:
+        rag = get_rag_for(_current_workspace_id())
+        return jsonify({
+            "success": True,
+            "caches": {
+                "embedding": rag.embedding_cache.stats(),
+                "response": rag.response_cache.stats(),
+                "semantic": rag.semantic_cache.stats(),
+            },
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cache/clear", methods=["POST"])
+def cache_clear():
+    """Clear one or all cache layers.
+
+    Body JSON (optional):
+        {"layer": "response"}   → clear only response cache
+        {"layer": "semantic"}   → clear only semantic cache
+        {"layer": "embedding"}  → clear only embedding cache
+        {}  or omitted          → clear all
+    """
+    if not system_ready:
+        return jsonify({"error": "System not ready"}), 503
+
+    try:
+        rag = get_rag_for(_current_workspace_id())
+        data = request.get_json(silent=True) or {}
+        layer = data.get("layer", "all")
+
+        cleared = {}
+        if layer in ("all", "embedding"):
+            cleared["embedding"] = rag.embedding_cache.clear()
+        if layer in ("all", "response"):
+            cleared["response"] = rag.response_cache.clear()
+        if layer in ("all", "semantic"):
+            cleared["semantic"] = rag.semantic_cache.clear()
+
+        if not cleared:
+            return jsonify({"error": f"Unknown layer: {layer}"}), 400
+
+        logger.info(f"{StatusEmoji.SUCCESS} Cache cleared: {cleared}")
+        return jsonify({"success": True, "cleared": cleared})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------- Workspace endpoints ----------
+
+@app.route("/workspaces", methods=["GET"])
+def list_workspaces():
+    """List all workspaces for the landing page."""
+    return jsonify({
+        "workspaces": [ws.to_dict() for ws in workspace_manager.list()],
+        "default_id": DEFAULT_WORKSPACE_ID,
+        "vector_stores": VectorStoreFactory.available(),
+    })
+
+
+@app.route("/workspaces", methods=["POST"])
+def create_workspace():
+    """Create a new workspace from JSON body: {name, color?, description?, vector_db?}."""
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Workspace name required"}), 400
+
+    vector_db = data.get("vector_db", "chroma")
+    if not VectorStoreFactory.is_available(vector_db):
+        return jsonify({
+            "error": f"Unknown vector_db '{vector_db}'",
+            "available": [s["id"] for s in VectorStoreFactory.available()],
+        }), 400
+
+    try:
+        ws = workspace_manager.create(
+            name=name,
+            color=data.get("color"),
+            description=data.get("description", ""),
+            vector_db=vector_db,
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({"success": True, "workspace": ws.to_dict()}), 201
+
+
+@app.route("/workspaces/<ws_id>", methods=["DELETE"])
+def delete_workspace(ws_id):
+    """Delete a workspace (and its files). Default workspace is protected."""
+    try:
+        ok = workspace_manager.delete(ws_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if not ok:
+        return jsonify({"error": "Workspace not found"}), 404
+    invalidate_rag(ws_id)
+    return jsonify({"success": True, "workspace_id": ws_id})
+
+
+@app.route("/workspaces/<ws_id>", methods=["PATCH"])
+def update_workspace(ws_id):
+    """Rename / recolor / redescribe / switch vector DB for a workspace.
+
+    Changing vector_db invalidates the cached RAG so the next request
+    rebuilds it against the new DB. The user still needs to reindex —
+    the old DB's vectors don't migrate.
+    """
+    data = request.get_json(silent=True) or {}
+
+    new_vector_db = data.get("vector_db")
+    if new_vector_db is not None:
+        if not VectorStoreFactory.is_available(new_vector_db):
+            return jsonify({
+                "error": f"Unknown vector_db '{new_vector_db}'",
+                "available": [s["id"] for s in VectorStoreFactory.available()],
+            }), 400
+
+    ws = workspace_manager.update(
+        ws_id,
+        name=data.get("name"),
+        color=data.get("color"),
+        description=data.get("description"),
+        vector_db=new_vector_db,
+    )
+    if ws is None:
+        return jsonify({"error": "Workspace not found"}), 404
+
+    # Drop the cached RAG so the next request picks up the new vector DB
+    if new_vector_db is not None:
+        invalidate_rag(ws_id)
+
+    return jsonify({
+        "success": True,
+        "workspace": ws.to_dict(),
+        "needs_reindex": new_vector_db is not None,
+    })
 
 
 def create_app():
