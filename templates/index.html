@@ -2600,10 +2600,23 @@
                 formData.append('file', file);
 
                 try {
-                    const response = await fetch('/upload', { method: 'POST', body: formData });
+                    // X-Workspace-Id routes upload to the active workspace.
+                    // FormData uploads can't share buildAuthHeaders() wholesale
+                    // (Content-Type must be left for the browser), but the
+                    // workspace header is plain ASCII and safe to forward.
+                    const headers = {};
+                    if (currentWorkspaceId) headers['X-Workspace-Id'] = currentWorkspaceId;
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        headers,
+                        body: formData,
+                    });
                     const result = await response.json();
                     if (result.success) {
                         showToast(`${file.name} yüklendi`);
+                        if (result.warning) {
+                            showToast(result.warning, 'error');
+                        }
                     } else {
                         showToast(result.error || 'Yükleme başarısız', 'error');
                     }
@@ -2617,7 +2630,7 @@
         // ---------- File list ----------
         async function loadFiles() {
             try {
-                const response = await fetch('/list-files');
+                const response = await fetch('/list-files', { headers: buildAuthHeaders() });
                 const data = await response.json();
 
                 const fileList = document.getElementById('fileList');
@@ -2669,7 +2682,7 @@
             try {
                 const response = await fetch('/delete-file', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...buildAuthHeaders() },
                     body: JSON.stringify({ filename })
                 });
                 const result = await response.json();
@@ -2692,10 +2705,22 @@
             reindexBtn.innerHTML = '<span class="spinner"></span> Yeniden indeksleniyor...';
 
             try {
-                const response = await fetch('/reindex', { method: 'POST' });
+                const response = await fetch('/reindex', {
+                    method: 'POST',
+                    headers: buildAuthHeaders(),
+                });
                 const result = await response.json();
                 if (result.success) {
                     showToast(`${result.document_count} belge yeniden indekslendi`);
+                    // Refresh the workspace list so the card on the landing
+                    // page reflects the new file_count after reindex.
+                    await loadWorkspaces();
+                    // And clear the "empty workspace" placeholder on the
+                    // Ask tab so the user knows they can now ask.
+                    showAnswerPlaceholder(
+                        "İndeksleme tamamlandı. 'Soru Sor' sekmesinden " +
+                        "sorunuzu yazıp <kbd>Ctrl</kbd>+<kbd>Enter</kbd>'a basın."
+                    );
                 } else {
                     showToast(result.error || 'İndeksleme başarısız', 'error');
                 }
@@ -2785,7 +2810,7 @@
         // ---------- System status ----------
         async function checkStatus() {
             try {
-                const response = await fetch('/status');
+                const response = await fetch('/status', { headers: buildAuthHeaders() });
                 const status = await response.json();
                 const statusEl = document.getElementById('systemStatus');
 
@@ -2917,8 +2942,48 @@
             currentWorkspaceId = wsId;
             localStorage.setItem(WORKSPACE_KEY, wsId);
             showAppView();
+            // If the workspace is empty (newly created OR all files deleted),
+            // start the user on the Files tab so the next action is obvious.
+            // We have an authoritative file_count from /workspaces already.
+            const ws = workspaceList.find(w => w.id === wsId);
+            const empty = !ws || (ws.file_count || 0) === 0;
+            if (empty) {
+                switchToTab('files');
+                showAnswerPlaceholder(
+                    "Bu çalışma alanı henüz boş. '<strong>Dosyaları Yönet</strong>' " +
+                    "sekmesinden bir veya birkaç dosya yükleyin, sonra '<strong>" +
+                    "Bilgi Tabanını Yeniden İndeksle</strong>' butonuna basın. " +
+                    "İndeksleme bittiğinde buradan soru sorabilirsiniz."
+                );
+            } else {
+                showAnswerPlaceholder(
+                    "Sorunuzu yazın, 'Soruyu Sor' butonuna veya " +
+                    "<kbd>Ctrl</kbd>+<kbd>Enter</kbd>'a basın."
+                );
+            }
             loadFiles();
             checkStatus();
+        }
+
+        function switchToTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+            const pane = document.getElementById(tabName + '-tab');
+            if (btn) btn.classList.add('active');
+            if (pane) pane.classList.add('active');
+        }
+
+        function showAnswerPlaceholder(htmlMessage) {
+            const el = document.getElementById('answerContent');
+            if (!el) return;
+            el.className = 'answer-content empty';
+            el.innerHTML = htmlMessage;
+            const sources = document.getElementById('sourcesContent');
+            if (sources) {
+                sources.className = 'empty-state';
+                sources.innerHTML = 'Henüz kaynak yok. Bir soru sorduğunuzda burada görünür.';
+            }
         }
 
         function showLandingView() {
