@@ -242,6 +242,34 @@ class TestWorkspaceAPI:
         assert r.status_code == 200
         assert r.get_json()["workspace"]["name"] == "Yeni"
 
+    def test_patch_changes_vector_db(self, api_client):
+        ws = api_client.post(
+            "/workspaces",
+            json={"name": "DB-Test", "vector_db": "chroma"},
+        ).get_json()["workspace"]
+        # Find an alternative DB the registry knows about (qdrant if installed,
+        # otherwise just patch back to chroma to assert needs_reindex semantics)
+        r_list = api_client.get("/workspaces").get_json()
+        alt_dbs = [v["id"] for v in r_list["vector_stores"] if v["id"] != "chroma"]
+        if not alt_dbs:
+            pytest.skip("Only one vector store available; cannot test switching")
+        r = api_client.patch(
+            f"/workspaces/{ws['id']}",
+            json={"vector_db": alt_dbs[0]},
+        )
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["workspace"]["vector_db"] == alt_dbs[0]
+        assert body["needs_reindex"] is True
+
+    def test_patch_unknown_vector_db_rejected(self, api_client):
+        ws = api_client.post("/workspaces", json={"name": "x"}).get_json()["workspace"]
+        r = api_client.patch(
+            f"/workspaces/{ws['id']}",
+            json={"vector_db": "nonsense-db"},
+        )
+        assert r.status_code == 400
+
     def test_list_files_respects_workspace_header(self, api_client):
         # Plant a file in a non-default workspace
         ws = api_client.post("/workspaces", json={"name": "Test"}).get_json()["workspace"]

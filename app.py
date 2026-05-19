@@ -616,17 +616,41 @@ def delete_workspace(ws_id):
 
 @app.route("/workspaces/<ws_id>", methods=["PATCH"])
 def update_workspace(ws_id):
-    """Rename / recolor / redescribe a workspace."""
+    """Rename / recolor / redescribe / switch vector DB for a workspace.
+
+    Changing vector_db invalidates the cached RAG so the next request
+    rebuilds it against the new DB. The user still needs to reindex —
+    the old DB's vectors don't migrate.
+    """
     data = request.get_json(silent=True) or {}
+
+    new_vector_db = data.get("vector_db")
+    if new_vector_db is not None:
+        if not VectorStoreFactory.is_available(new_vector_db):
+            return jsonify({
+                "error": f"Unknown vector_db '{new_vector_db}'",
+                "available": [s["id"] for s in VectorStoreFactory.available()],
+            }), 400
+
     ws = workspace_manager.update(
         ws_id,
         name=data.get("name"),
         color=data.get("color"),
         description=data.get("description"),
+        vector_db=new_vector_db,
     )
     if ws is None:
         return jsonify({"error": "Workspace not found"}), 404
-    return jsonify({"success": True, "workspace": ws.to_dict()})
+
+    # Drop the cached RAG so the next request picks up the new vector DB
+    if new_vector_db is not None:
+        invalidate_rag(ws_id)
+
+    return jsonify({
+        "success": True,
+        "workspace": ws.to_dict(),
+        "needs_reindex": new_vector_db is not None,
+    })
 
 
 def create_app():

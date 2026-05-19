@@ -137,3 +137,13 @@ data/workspaces/**/files/*.docx
 data/workspaces/**/files/*.md
 data/workspaces/**/files/*.markdown
 data/workspaces/**/files/*.txt
+
+# Workspace runtime state — only the default workspace's structure is
+# tracked (sample data + meta), everything else is per-user.
+data/workspaces/*/meta.json
+!data/workspaces/default/meta.json
+
+# Vector DB binaries — never track these
+data/workspaces/*/chroma_db/
+data/workspaces/*/qdrant_db/
+data/chroma_db/

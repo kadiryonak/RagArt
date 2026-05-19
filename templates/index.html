@@ -1225,6 +1225,131 @@
             border-color: var(--text);
         }
 
+        /* Help view */
+        .help-view {
+            padding: 28px 32px 40px;
+            max-width: 880px;
+            margin: 0 auto;
+            line-height: 1.65;
+            color: var(--text);
+        }
+
+        .help-view h2 {
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0 0 8px;
+            color: var(--text);
+        }
+
+        .help-view h3 {
+            font-size: 17px;
+            font-weight: 600;
+            margin: 28px 0 10px;
+            color: var(--text);
+            letter-spacing: -0.01em;
+        }
+
+        .help-view h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 18px 0 6px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .help-view p, .help-view li {
+            color: var(--text);
+            font-size: 14.5px;
+        }
+
+        .help-view ul {
+            padding-left: 22px;
+            margin: 8px 0;
+        }
+
+        .help-view li {
+            margin-bottom: 4px;
+        }
+
+        .help-view strong {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .help-view code {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12.5px;
+            color: var(--text);
+        }
+
+        .help-view .lead {
+            color: var(--text-secondary);
+            font-size: 14.5px;
+            margin: 0 0 24px;
+        }
+
+        .help-view table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 13.5px;
+        }
+
+        .help-view th, .help-view td {
+            border-bottom: 1px solid var(--border);
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .help-view th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .help-view .callout {
+            background: var(--accent-soft);
+            border-left: 3px solid var(--accent);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            margin: 14px 0;
+            font-size: 13.5px;
+        }
+
+        .help-view .callout.warn {
+            background: var(--warning-soft);
+            border-left-color: var(--warning);
+        }
+
+        /* Vector DB sub-panel inside settings */
+        .ws-info-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .ws-info-panel .ws-info-row {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-secondary);
+        }
+
+        .ws-info-panel .ws-info-row strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             body {
@@ -1298,6 +1423,14 @@
                     </svg>
                     Alanlar
                 </button>
+                <button class="theme-toggle" id="helpToggle" aria-label="Yardım" title="Yardım / README">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                </button>
                 <button class="theme-toggle" id="settingsToggle" aria-label="Settings" title="Ayarlar">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -1319,6 +1452,203 @@
                 </button>
             </div>
         </header>
+
+        <!-- Help / Usage Guide view -->
+        <section id="help-view" class="help-view" style="display: none;">
+            <h2>RagArt — Kullanım Kılavuzu</h2>
+            <p class="lead">
+                Türkçe odaklı, plug-in mimarili bir RAG (Retrieval-Augmented
+                Generation) sistemi. Aşağıdaki rehber her özelliğin <em>ne
+                zaman iyi olduğunu</em> ve <em>nasıl daha verimli
+                kullanılacağını</em> anlatır.
+            </p>
+
+            <h3>1. Workspace'ler nasıl çalışır?</h3>
+            <p>
+                Her workspace izole bir bilgi tabanıdır — kendi dosyaları,
+                kendi vektör veritabanı. Farklı projeler için ayrı tutmak
+                <strong>kalite ve gizlilik</strong> açısından kritik:
+            </p>
+            <ul>
+                <li>CV / özel evrak → kendi workspace'i (genel verilerle karışmaz)</li>
+                <li>Şirket dokümanları → ayrı workspace</li>
+                <li>Wikipedia örnekleri → <code>Default</code> workspace'te kalır</li>
+            </ul>
+            <div class="callout">
+                💡 <strong>İpucu:</strong> Dosya yükledikten sonra
+                <strong>Bilgi Tabanını Yeniden İndeksle</strong> butonuna
+                basmadan retrieval çalışmaz.
+            </div>
+
+            <h3>2. Retrieval stratejisi (Ayarlar)</h3>
+            <table>
+                <thead>
+                    <tr><th>Strateji</th><th>Ne zaman iyi?</th><th>Ne zaman zayıf?</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Dense (embedding)</strong></td>
+                        <td>Anlamsal sorgular ("yapay zekanın faydaları"), paraphrase</td>
+                        <td>Özel isim/kod/kısaltma (BERT, FastAPI)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Sparse (BM25)</strong></td>
+                        <td>Tam eşleşme, isim, kısaltma, nadir terimler</td>
+                        <td>Eşanlamlı / paraphrase</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Hybrid (RRF)</strong></td>
+                        <td>Her ikisinin avantajı — production default</td>
+                        <td>Çok küçük top-k'da gereksiz</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>
+                <strong>Otomatik</strong> seçilirse hybrid kullanılır.
+                Şüphedeyseniz <code>auto</code> bırakın.
+            </p>
+
+            <h3>3. Reranker (Cross-encoder)</h3>
+            <p>
+                İlk retrieval'dan gelen aday belgeleri ikinci bir model
+                <em>(query, doc)</em> çifti üzerinden yeniden sıralar. Çok
+                daha doğru ama yavaş (~6-8 saniye ekler).
+            </p>
+            <ul>
+                <li><strong>Aç:</strong> Doğru cevabı bulamıyorsa, retrieval doğru kaynak getiriyor ama yanlış chunk seçiyorsa</li>
+                <li><strong>Kapat:</strong> Hız öncelikli demo, yaygın faktöel sorular</li>
+            </ul>
+            <div class="callout">
+                İlk açtığında ~400MB <code>bge-reranker-v2-m3</code> modeli
+                indirilir (tek seferlik). Sonra cache'lenir.
+            </div>
+
+            <h3>4. Memory (Sohbet Hafızası)</h3>
+            <p>
+                Çoklu turn sohbet için. Tek soru-cevap senaryosunda
+                <code>none</code> kalsın.
+            </p>
+            <table>
+                <thead>
+                    <tr><th>Strateji</th><th>Ne yapar?</th><th>İdeal</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Sliding window</strong></td>
+                        <td>Son 5 turn'ü ham olarak prompt'a ekler</td>
+                        <td>Kısa sohbet, deterministik</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Summary buffer</strong></td>
+                        <td>Eskileri LLM ile özetler, son 4'ü ham tutar</td>
+                        <td>Uzun sohbet, token tasarrufu</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Vector retrieval</strong></td>
+                        <td>Geçmişten semantik olarak alakalı turn'leri çeker</td>
+                        <td>50+ turn'lük uzun sohbetler</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>5. Context Engineering (Riskli — bilerek aç)</h3>
+            <p>
+                Eval baseline'larımızda <strong>top-k=5 + reranker</strong>
+                konfigine bu işlemcilerin değer katmadığı görüldü
+                (bkz. <code>docs/eval-history.md</code> v4). Default
+                <strong>kapalı</strong> — ne zaman açın:
+            </p>
+            <ul>
+                <li><strong>Dedup:</strong> Dense-only retrieval kullanıyorsanız (BM25 yok)</li>
+                <li><strong>Reorder (lost-in-the-middle):</strong> 10+ chunk veya 100+ sayfa PDF</li>
+                <li><strong>Token budget:</strong> API maliyeti kritikse</li>
+            </ul>
+
+            <h3>6. Provider & BYOK (Bring Your Own Key)</h3>
+            <p>
+                API anahtarınız <strong>sadece tarayıcınızda</strong> saklanır
+                (localStorage), sunucuya gönderilmez. Her istekte
+                <code>X-API-Key</code> header'ı ile geçer; sunucu hiç
+                saklamaz.
+            </p>
+            <p>Provider önerileri:</p>
+            <ul>
+                <li><strong>Groq</strong> — ücretsiz katman, <code>llama-3.3-70b-versatile</code>, hızlı. Test/showcase için ideal.</li>
+                <li><strong>DeepSeek</strong> — ucuz, Türkçe iyi</li>
+                <li><strong>OpenAI</strong> — gpt-4o-mini varsayılan, kalite üst düzey</li>
+                <li><strong>Ollama</strong> — local, key gerekmez (yerel kurulum şart)</li>
+                <li><strong>Local</strong> — fallback template, API key olmadan çalışır ama çok zayıf</li>
+            </ul>
+
+            <h3>7. Güvenlik — halüsinasyon koruması</h3>
+            <p>
+                Default'ta <strong>"Genel bilgi fallback'i" KAPALI</strong>.
+                Retrieval boş döndüğünde LLM kendi bilgisinden cevap
+                <em>üretmez</em> — bunun yerine "yeterli detay yok" mesajı
+                döner.
+            </p>
+            <div class="callout warn">
+                ⚠️ Açtığınızda LLM <em>özel isim, kuruluş, proprietary
+                içerik</em> için <strong>UYDURMA CEVAP</strong> verebilir.
+                Wikipedia tarzı kamu bilgisi soruyorsanız makul; özel/iç
+                veride <strong>kapalı tutun</strong>.
+            </div>
+
+            <h3>8. Multi-format yükleme</h3>
+            <p>Desteklenen: <code>.json</code> <code>.pdf</code> <code>.docx</code> <code>.md</code> <code>.txt</code></p>
+            <ul>
+                <li><strong>PDF:</strong> Sayfa-bazlı chunk; metin katmanı yoksa (taranmış) çıkarım yapılamaz</li>
+                <li><strong>DOCX:</strong> Paragraflar + tablolar (satır bazlı flatten)</li>
+                <li><strong>Markdown:</strong> Code fence'ler ve frontmatter temizlenir</li>
+                <li><strong>JSON:</strong> Liste / nested structure recursive extract</li>
+            </ul>
+            <p>
+                Yükleme sonrası <strong>Bilgi Tabanını Yeniden İndeksle</strong>
+                butonuna basmadan dosya retrieval'a girmez.
+            </p>
+
+            <h3>9. Vektör Veritabanı seçimi</h3>
+            <p>
+                Workspace oluştururken seçilir, sonradan Ayarlar'dan
+                değiştirilebilir (yeniden indeksleme gerektirir).
+            </p>
+            <ul>
+                <li><strong>ChromaDB</strong> (default) — sıfır setup, embed-only mode, tek dosya, kolay backup</li>
+                <li><strong>Qdrant</strong> — Rust-based, gelişmiş filter desteği. <code>pip install qdrant-client</code> sonra dropdown'da görünür</li>
+            </ul>
+            <div class="callout">
+                Daha fazla DB (Weaviate, Pinecone, Milvus, pgvector...) eklemek
+                için <code>BaseVectorStore</code>'u implement edip
+                <code>VectorStoreFactory.register()</code> çağırın — UI
+                otomatik tanır.
+            </div>
+
+            <h3>10. En verimli kullanım — özet</h3>
+            <ol>
+                <li><strong>Workspace oluştur</strong> (proje bazlı izolasyon)</li>
+                <li><strong>API key gir</strong> (Groq önerilir, ücretsiz)</li>
+                <li><strong>Dosyaları yükle + Yeniden İndeksle</strong></li>
+                <li><strong>Reranker'ı aç</strong> (yavaş ama doğruluk artar)</li>
+                <li><strong>Memory'i sohbet'e göre seç</strong> (tek soru → none)</li>
+                <li><strong>Halüsinasyon fallback'i kapalı tut</strong> (özel veri için)</li>
+                <li><strong>Cevap kaynaklarını tıkla</strong> — PDF'de doğru sayfa açılır</li>
+            </ol>
+
+            <h3>11. Sorun giderme</h3>
+            <ul>
+                <li><strong>"Collection [UUID] does not exist":</strong> Yeniden İndeksle</li>
+                <li><strong>"Kaynak bulunamadı" + cevap yok:</strong> Dosya yüklendi mi? Reindex'lendi mi? PDF taranmış mı?</li>
+                <li><strong>Header fetch hatası (ISO-8859-1):</strong> Çözüldü (base64 encoding); sayfayı yenile</li>
+                <li><strong>Reranker model indirme yavaş:</strong> İlk seferlik 400MB; sonra cache'li</li>
+            </ul>
+
+            <h3>12. Daha fazla teknik detay</h3>
+            <ul>
+                <li><code>docs/ARCHITECTURE.md</code> — 7 domain stratejisi + plugin contracts</li>
+                <li><code>docs/eval-history.md</code> — her özellik için ölçülmüş kazanım/regresyon</li>
+                <li><code>tests/evaluation/baselines/</code> — frozen baseline raporları (v0 → v4)</li>
+            </ul>
+        </section>
 
         <!-- Landing view — workspace cards -->
         <section id="landing-view" class="landing" style="display: none;">
@@ -1597,6 +1927,35 @@
                             Aday belgeleri cross-encoder ile yeniden sıralar.
                             İlk çağrıda ~400MB model indirir (cache'lenir).
                             Her sorguya ~500-1000ms ekler.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">Çalışma Alanı</div>
+                    <div id="wsInfoPanel" class="ws-info-panel">
+                        <div class="ws-info-row">
+                            <span>Aktif workspace</span>
+                            <strong id="wsInfoName">—</strong>
+                        </div>
+                        <div class="ws-info-row" style="margin-top: 4px;">
+                            <span>Vektör DB</span>
+                            <strong id="wsInfoVectorDb">—</strong>
+                        </div>
+                        <div class="ws-info-row" style="margin-top: 4px;">
+                            <span>Dosya sayısı</span>
+                            <strong id="wsInfoFileCount">—</strong>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="wsVectorDbSelect">
+                            Vektör Veritabanını Değiştir
+                        </label>
+                        <select id="wsVectorDbSelect" class="form-select"></select>
+                        <div class="form-hint" id="wsVectorDbHint" style="color: var(--warning);">
+                            ⚠️ DB değişimi yeniden indeksleme gerektirir
+                            (eski vektörler taşınmaz; yeni DB'de baştan
+                            embed'lenir).
                         </div>
                     </div>
                 </div>
@@ -2073,6 +2432,7 @@
         settingsToggle.addEventListener('click', () => {
             settingsModal.classList.add('open');
             if (!settingsSchema) loadSettingsSchema();
+            refreshWorkspaceInfoPanel();
         });
         document.getElementById('settingsClose').addEventListener('click', () => {
             settingsModal.classList.remove('open');
@@ -2604,6 +2964,99 @@
             currentWorkspaceId = '';
             localStorage.removeItem(WORKSPACE_KEY);
             refreshWorkspacesUI();
+        });
+
+        // ---------- Help view (top-right ? button) ----------
+        // Toggleable third view (alongside landing + app). The button stays
+        // visible everywhere so the user can pop the guide open mid-task.
+        const helpView = document.getElementById('help-view');
+        let helpOpen = false;
+        let preHelpState = null;  // remember what was visible before opening help
+
+        document.getElementById('helpToggle').addEventListener('click', () => {
+            if (helpOpen) {
+                closeHelp();
+            } else {
+                openHelp();
+            }
+        });
+
+        function openHelp() {
+            preHelpState = {
+                landing: document.getElementById('landing-view').style.display,
+                app: document.getElementById('app-view').style.display,
+            };
+            document.getElementById('landing-view').style.display = 'none';
+            document.getElementById('app-view').style.display = 'none';
+            helpView.style.display = 'block';
+            helpOpen = true;
+            // Scroll to top in case the previous scroll was deep inside the app
+            window.scrollTo(0, 0);
+        }
+
+        function closeHelp() {
+            helpView.style.display = 'none';
+            if (preHelpState) {
+                document.getElementById('landing-view').style.display = preHelpState.landing;
+                document.getElementById('app-view').style.display = preHelpState.app;
+            } else if (currentWorkspaceId) {
+                showAppView();
+            } else {
+                showLandingView();
+            }
+            helpOpen = false;
+        }
+
+        // ---------- Settings: workspace info panel + vector DB switch ----------
+        function refreshWorkspaceInfoPanel() {
+            const ws = workspaceList.find(w => w.id === currentWorkspaceId);
+            if (!ws) return;
+            document.getElementById('wsInfoName').textContent = ws.name;
+            document.getElementById('wsInfoVectorDb').textContent = (ws.vector_db || 'chroma').toUpperCase();
+            document.getElementById('wsInfoFileCount').textContent = ws.file_count ?? '—';
+
+            const sel = document.getElementById('wsVectorDbSelect');
+            const opts = vectorStoreOptions.length ? vectorStoreOptions : [
+                { id: 'chroma', label: 'ChromaDB (default)', desc: '' }
+            ];
+            sel.innerHTML = opts.map(v =>
+                `<option value="${escapeHtml(v.id)}">${escapeHtml(v.label)}</option>`
+            ).join('');
+            sel.value = ws.vector_db || 'chroma';
+        }
+
+        document.getElementById('wsVectorDbSelect').addEventListener('change', async (e) => {
+            const newDb = e.target.value;
+            const ws = workspaceList.find(w => w.id === currentWorkspaceId);
+            if (!ws || newDb === ws.vector_db) return;
+            const ok = confirm(
+                `Vektör veritabanını ${ws.vector_db.toUpperCase()} → ${newDb.toUpperCase()} ` +
+                `olarak değiştir? Bu işlem sonrası Bilgi Tabanını Yeniden ` +
+                `İndeksle butonuna basmanız gerekir.`
+            );
+            if (!ok) {
+                e.target.value = ws.vector_db;
+                return;
+            }
+            try {
+                const r = await fetch(`/workspaces/${encodeURIComponent(ws.id)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ vector_db: newDb }),
+                });
+                if (!r.ok) {
+                    const body = await r.json().catch(() => ({}));
+                    showToast(body.error || 'Değişiklik başarısız', 'error');
+                    e.target.value = ws.vector_db;
+                    return;
+                }
+                await loadWorkspaces();
+                refreshWorkspaceInfoPanel();
+                showToast('DB değişti — lütfen yeniden indeksleyin');
+            } catch {
+                showToast('İstek başarısız', 'error');
+                e.target.value = ws.vector_db;
+            }
         });
 
         // ----- Create modal -----

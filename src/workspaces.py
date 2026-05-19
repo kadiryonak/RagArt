@@ -245,6 +245,7 @@ class WorkspaceManager:
         name: Optional[str] = None,
         color: Optional[str] = None,
         description: Optional[str] = None,
+        vector_db: Optional[str] = None,
     ) -> Optional[Workspace]:
         ws = self._read_meta(workspace_id)
         if ws is None:
@@ -255,6 +256,10 @@ class WorkspaceManager:
             ws.color = color
         if description is not None:
             ws.description = description.strip()
+        if vector_db is not None and vector_db != ws.vector_db:
+            # NOTE: Caller is responsible for reindexing — the old vectors
+            # live in the old DB's path and aren't migrated.
+            ws.vector_db = vector_db
         self._write_meta(ws)
         return ws
 
