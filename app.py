@@ -25,13 +25,22 @@ from config.settings_schema import (
     parse_request_settings,
 )
 
-# Setup logging
-setup_logging()
+# Setup logging — install_logging() replaces the legacy setup_logging
+# with the request-id aware version. We keep setup_logging() above for
+# backward compat with anything that still imports it but skip running it.
+from src.observability import (
+    install_flask_middleware,
+    install_logging,
+)
+install_logging()
 logger = get_logger(__name__)
 
 # Create Flask app
 app = Flask(__name__)
 CORS(app)
+# Attach the X-Request-ID middleware before any routes are defined; this
+# wires before_request / after_request hooks for every endpoint.
+install_flask_middleware(app)
 
 # File upload configuration — multi-format
 # Driven by the LoaderRegistry so adding a new loader auto-enables uploads.
