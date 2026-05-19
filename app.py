@@ -520,6 +520,12 @@ def reindex_documents():
         rag.create_vector_store()
         workspace_manager.touch(ws_id)
 
+        # Invalidate response & semantic caches — knowledge base changed,
+        # old answers may be stale. Embedding cache is kept (embeddings
+        # are model-level, not data-level).
+        rag.response_cache.clear()
+        rag.semantic_cache.clear()
+
         system_status = "Ready"
         system_ready = True
 
@@ -560,6 +566,62 @@ def list_files():
             "workspace_id": ws_id,
         })
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---------- Cache endpoints ----------
+
+@app.route("/cache/stats")
+def cache_stats():
+    """Return hit/miss statistics for all cache layers."""
+    if not system_ready:
+        return jsonify({"error": "System not ready"}), 503
+
+    try:
+        rag = get_rag_for(_current_workspace_id())
+        return jsonify({
+            "success": True,
+            "caches": {
+                "embedding": rag.embedding_cache.stats(),
+                "response": rag.response_cache.stats(),
+                "semantic": rag.semantic_cache.stats(),
+            },
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/cache/clear", methods=["POST"])
+def cache_clear():
+    """Clear one or all cache layers.
+
+    Body JSON (optional):
+        {"layer": "response"}   → clear only response cache
+        {"layer": "semantic"}   → clear only semantic cache
+        {"layer": "embedding"}  → clear only embedding cache
+        {}  or omitted          → clear all
+    """
+    if not system_ready:
+        return jsonify({"error": "System not ready"}), 503
+
+    try:
+        rag = get_rag_for(_current_workspace_id())
+        data = request.get_json(silent=True) or {}
+        layer = data.get("layer", "all")
+
+        cleared = {}
+        if layer in ("all", "embedding"):
+            cleared["embedding"] = rag.embedding_cache.clear()
+        if layer in ("all", "response"):
+            cleared["response"] = rag.response_cache.clear()
+        if layer in ("all", "semantic"):
+            cleared["semantic"] = rag.semantic_cache.clear()
+
+        if not cleared:
+            return jsonify({"error": f"Unknown layer: {layer}"}), 400
+
+        logger.info(f"{StatusEmoji.SUCCESS} Cache cleared: {cleared}")
+        return jsonify({"success": True, "cleared": cleared})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

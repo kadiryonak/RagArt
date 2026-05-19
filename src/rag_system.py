@@ -49,6 +49,7 @@ from src.prompt_strategies import (
     StrategyContext,
 )
 from src.prompt_strategies.multi_query import MultiQueryStrategy
+from src.cache import EmbeddingCache, ResponseCache, SemanticCache
 from src.utils import get_logger, StatusEmoji, calculate_word_overlap
 
 logger = get_logger(__name__)
@@ -159,6 +160,22 @@ class TurkishRAGSystem:
 
         # Document loader
         self.document_loader = JSONDocumentLoader(data_folder)
+
+        # Caches: embedding cache wraps the embedder transparently;
+        # response/semantic caches are checked in ask() when enabled.
+        # Cache DBs live alongside the chroma persist path so they get
+        # cleaned up together if the workspace is reset.
+        from pathlib import Path as _P
+        cache_dir = _P(chroma_db_path).parent / "cache"
+        self.embedding_cache = EmbeddingCache(
+            str(cache_dir / "embeddings.db"),
+            embedder=self.embedding_manager,
+        )
+        self.response_cache = ResponseCache(str(cache_dir / "responses.db"))
+        self.semantic_cache = SemanticCache(
+            str(cache_dir / "semantic.db"),
+            embed_fn=self.embedding_cache.embed_query,
+        )
 
         # Retrievers — built when vector store is ready (dense always,
         # sparse from the same docs, hybrid as RRF of the two).
@@ -553,6 +570,9 @@ class TurkishRAGSystem:
         prompt_strategy: Optional[str] = None,
         custom_role: Optional[str] = None,
         custom_prompt_template: Optional[str] = None,
+        use_response_cache: bool = True,
+        use_semantic_cache: bool = False,
+        semantic_cache_threshold: float = 0.92,
     ) -> Dict[str, Any]:
         """
         Ask a question and get an answer using the RAG system.
@@ -580,6 +600,46 @@ class TurkishRAGSystem:
             }
         
         try:
+            # ── Cache lookup ──────────────────────────────────────────
+            # Build a payload dict capturing every param that affects the
+            # answer so exact-match cache works correctly.
+            cache_payload = {
+                "question": question,
+                "k": k,
+                "retrieval_strategy": retrieval_strategy,
+                "rerank": rerank,
+                "rerank_fetch_k": rerank_fetch_k,
+                "prompt_strategy": prompt_strategy,
+                "custom_role": custom_role,
+                "custom_prompt_template": custom_prompt_template,
+                "memory_strategy": memory_strategy,
+                "deduplicate_context": deduplicate_context,
+                "reorder_context": reorder_context,
+                "max_context_tokens": max_context_tokens,
+                "llm_params": dict(llm_params or {}),
+                "provider": getattr(llm_provider, "model", self.model_type),
+            }
+
+            # 1) Exact response cache
+            if use_response_cache:
+                cached = self.response_cache.get(cache_payload)
+                if cached is not None:
+                    logger.info(f"{StatusEmoji.SUCCESS} Response cache HIT (exact)")
+                    cached["cache_hit"] = "exact"
+                    return cached
+
+            # 2) Semantic cache (cosine similarity ≥ threshold)
+            if use_semantic_cache:
+                sem_result, sim = self.semantic_cache.get(question)
+                if sem_result is not None:
+                    logger.info(
+                        f"{StatusEmoji.SUCCESS} Semantic cache HIT "
+                        f"(sim={sim:.3f} ≥ {semantic_cache_threshold})"
+                    )
+                    sem_result["cache_hit"] = f"semantic({sim:.3f})"
+                    return sem_result
+
+            # ── Normal retrieval path ─────────────────────────────────
             # Build context-engineering chain (None if no flags set)
             context_chain = self._build_context_chain(
                 deduplicate=deduplicate_context,
@@ -680,8 +740,8 @@ class TurkishRAGSystem:
                 memory_context=memory_context,
             )
             
-            # Return result
-            return {
+            # Build result
+            result = {
                 "question": question,
                 "answer": answer,
                 "source_documents": [
@@ -699,8 +759,18 @@ class TurkishRAGSystem:
                 "memory_strategy": memory_strategy or "none",
                 "memory_used": bool(memory_context),
                 "prompt_strategy": strategy.name,
+                "cache_hit": False,
             }
-            
+
+            # ── Cache persist ─────────────────────────────────────────
+            # Only cache successful answers (avoid caching errors/refusals).
+            if use_response_cache and answer:
+                self.response_cache.set(cache_payload, result)
+            if use_semantic_cache and answer:
+                self.semantic_cache.set(question, result)
+
+            return result
+
         except Exception as e:
             if isinstance(e, RuntimeError) and str(e) == "STALE_INDEX":
                 # Friendly Turkish message — UI surfaces this directly

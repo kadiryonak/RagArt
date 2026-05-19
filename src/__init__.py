@@ -11,14 +11,28 @@ This package provides a complete RAG solution with:
 __version__ = "1.0.0"
 __author__ = "RAG Team"
 
-from src.rag_system import TurkishRAGSystem
-from src.document_loader import JSONDocumentLoader
-from src.embeddings import EmbeddingManager
-from src.llm_providers import LLMProviderFactory
-
+# Lazy imports — avoid pulling heavy deps (chromadb, langchain) when
+# only lightweight submodules (e.g. src.cache) are needed.
 __all__ = [
     "TurkishRAGSystem",
-    "JSONDocumentLoader", 
+    "JSONDocumentLoader",
     "EmbeddingManager",
     "LLMProviderFactory",
 ]
+
+
+def __getattr__(name: str):
+    if name == "TurkishRAGSystem":
+        from src.rag_system import TurkishRAGSystem
+        return TurkishRAGSystem
+    if name == "JSONDocumentLoader":
+        from src.document_loader import JSONDocumentLoader
+        return JSONDocumentLoader
+    if name == "EmbeddingManager":
+        from src.embeddings import EmbeddingManager
+        return EmbeddingManager
+    if name == "LLMProviderFactory":
+        from src.llm_providers import LLMProviderFactory
+        return LLMProviderFactory
+    raise AttributeError(f"module 'src' has no attribute {name!r}")
+
