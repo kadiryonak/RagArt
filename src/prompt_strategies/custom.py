@@ -26,11 +26,13 @@ _FALLBACK_TEMPLATE = (
 
 class CustomStrategy(BasePromptStrategy):
     name = "custom"
-    label = "Özel template (ileri)"
+    label = "Özel template (geliştirici)"
     description_tr = (
         "Kendi prompt template'inizi yazın. {question}, {context}, "
         "{memory_context} placeholder'larını kullanabilirsiniz."
     )
+    # Tam prompt yazmak placeholder bilgisi gerektirir → geliştirici modu.
+    is_advanced = True
 
     def __init__(self, template: str | None = None):
         # Whitelist of allowed placeholders — anything else won't format.

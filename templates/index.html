@@ -1914,6 +1914,19 @@
                 <div class="form-section">
                     <div class="form-section-title">Prompt Stratejisi</div>
                     <div class="form-group">
+                        <label class="form-label" style="cursor: pointer;">
+                            <span>Geliştirici modu</span>
+                            <input type="checkbox" id="devModeToggle"
+                                   style="width: auto; margin-left: 8px;">
+                        </label>
+                        <div class="form-hint">
+                            Açıldığında ileri stratejiler de görünür: Multi-Query
+                            (birden çok LLM çağrısı) ve Özel template
+                            ({question}/{context} placeholder'larıyla tam prompt).
+                            Default kapalı — normal kullanıcı için sade UI.
+                        </div>
+                    </div>
+                    <div class="form-group">
                         <label class="form-label" for="promptStrategySelect">Strateji</label>
                         <select id="promptStrategySelect" class="form-select"></select>
                         <div class="form-hint" id="promptStrategyHint"></div>
@@ -2139,6 +2152,7 @@
                 promptStrategy: 'direct',
                 customRole: '',
                 customPromptTemplate: '',
+                developerMode: false,
             };
         }
 
@@ -2374,22 +2388,42 @@
                 userSettings.contextMaxTokens = (!isNaN(v) && v >= 64) ? v : null;
             });
 
-            // Prompt strategy selector
+            // Prompt strategy selector — gated by developer mode.
+            // Advanced strategies (is_advanced=true on the backend) only appear
+            // in the dropdown when the dev-mode toggle is ON; otherwise the
+            // average user sees a curated 4-option list.
             const psel = document.getElementById('promptStrategySelect');
             const phint = document.getElementById('promptStrategyHint');
+            const devToggle = document.getElementById('devModeToggle');
             const customRoleGroup = document.getElementById('customRoleGroup');
             const customTemplateGroup = document.getElementById('customTemplateGroup');
             const customRoleInput = document.getElementById('customRoleInput');
             const customTemplateInput = document.getElementById('customTemplateInput');
             const promptStrategies = settingsSchema.prompt_strategies || [];
-            psel.innerHTML = promptStrategies
-                .map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
-                .join('');
-            psel.value = userSettings.promptStrategy || 'direct';
+
+            devToggle.checked = !!userSettings.developerMode;
             customRoleInput.value = userSettings.customRole || '';
             customTemplateInput.value = userSettings.customPromptTemplate || '';
 
-            const updatePromptStrategyUI = () => {
+            function rebuildStrategyDropdown() {
+                const visible = promptStrategies.filter(s =>
+                    !s.is_advanced || userSettings.developerMode
+                );
+                psel.innerHTML = visible
+                    .map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
+                    .join('');
+                // Preserve current selection if still visible; otherwise fall
+                // back to 'direct'. Prevents the user being silently switched
+                // when they toggle dev mode off while on an advanced option.
+                const stillVisible = visible.find(s => s.id === userSettings.promptStrategy);
+                if (!stillVisible) {
+                    userSettings.promptStrategy = 'direct';
+                }
+                psel.value = userSettings.promptStrategy;
+                updatePromptStrategyUI();
+            }
+
+            function updatePromptStrategyUI() {
                 const sel = promptStrategies.find(x => x.id === psel.value);
                 phint.innerHTML = sel ? escapeHtml(sel.description) : '';
                 if (sel && sel.is_multi_call) {
@@ -2397,11 +2431,16 @@
                 }
                 customRoleGroup.style.display = psel.value === 'role_based' ? 'block' : 'none';
                 customTemplateGroup.style.display = psel.value === 'custom' ? 'block' : 'none';
-            };
-            updatePromptStrategyUI();
+            }
+
+            rebuildStrategyDropdown();
             psel.addEventListener('change', () => {
                 userSettings.promptStrategy = psel.value;
                 updatePromptStrategyUI();
+            });
+            devToggle.addEventListener('change', () => {
+                userSettings.developerMode = devToggle.checked;
+                rebuildStrategyDropdown();
             });
             customRoleInput.addEventListener('input', () => {
                 userSettings.customRole = customRoleInput.value;

@@ -40,6 +40,7 @@ class BasePromptStrategy(ABC):
     description_tr: str = ""
     is_multi_call: bool = False  # birden çok LLM çağrısı gerektiriyor mu?
     is_multi_query: bool = False  # birden çok retrieval çağrısı gerektiriyor mu?
+    is_advanced: bool = False    # default UI'da gizli; "Geliştirici modu"yla görünür
 
     @abstractmethod
     def build_prompt(
@@ -100,6 +101,7 @@ class PromptStrategyFactory:
             "description": inst.description_tr,
             "is_multi_call": inst.is_multi_call,
             "is_multi_query": inst.is_multi_query,
+            "is_advanced": inst.is_advanced,
         }
 
     @classmethod

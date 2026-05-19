@@ -42,6 +42,19 @@ class TestFactory:
         assert isinstance(PromptStrategyFactory.create("direct"), DirectStrategy)
         assert isinstance(PromptStrategyFactory.create("multi_query"), MultiQueryStrategy)
 
+    def test_is_advanced_flag(self):
+        # Custom + multi_query are gated by developer mode in the UI;
+        # backend exposes this so the dropdown can filter without
+        # hardcoding strategy IDs.
+        by_id = {s["id"]: s for s in PromptStrategyFactory.available()}
+        assert by_id["custom"]["is_advanced"] is True
+        assert by_id["multi_query"]["is_advanced"] is True
+        # Standard strategies must stay visible without dev mode
+        assert by_id["direct"]["is_advanced"] is False
+        assert by_id["chain_of_thought"]["is_advanced"] is False
+        assert by_id["few_shot"]["is_advanced"] is False
+        assert by_id["role_based"]["is_advanced"] is False
+
 
 # ----- Direct -----
 

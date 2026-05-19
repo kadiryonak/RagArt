@@ -51,6 +51,9 @@ class MultiQueryStrategy(BasePromptStrategy):
     )
     is_multi_call = True
     is_multi_query = True
+    # Multi-query birden çok LLM çağrısı + retrieval yapar → maliyet ve
+    # latency etkisi var. Default'ta gizle, geliştirici açtığında görünsün.
+    is_advanced = True
 
     DEFAULT_N_VARIANTS = 3
     K_RRF = 60
