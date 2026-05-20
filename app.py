@@ -24,6 +24,15 @@ from config.settings_schema import (
     get_settings_schema,
     parse_request_settings,
 )
+from src.api.errors import register_error_handlers
+from src.api.schemas import (
+    AskRequest,
+    CacheClearRequest,
+    CreateWorkspaceRequest,
+    DeleteFileRequest,
+    UpdateWorkspaceRequest,
+    parse_body,
+)
 
 # Setup logging — install_logging() replaces the legacy setup_logging
 # with the request-id aware version. We keep setup_logging() above for
@@ -41,6 +50,9 @@ CORS(app)
 # Attach the X-Request-ID middleware before any routes are defined; this
 # wires before_request / after_request hooks for every endpoint.
 install_flask_middleware(app)
+# Central exception→HTTP mapper: any RagArtError raised inside a route is
+# turned into a consistent JSON response (status + Turkish message).
+register_error_handlers(app)
 
 # File upload configuration — multi-format
 # Driven by the LoaderRegistry so adding a new loader auto-enables uploads.
@@ -177,13 +189,12 @@ def ask_question():
             "status": system_status
         }), 503
 
+    # Validate the body before the try block: a bad request must surface
+    # as a clean 400 via the central handler, not get swallowed as a 500.
+    body = parse_body(AskRequest, request.get_json(silent=True))
+    question = body.question
+
     try:
-        data = request.get_json()
-        question = data.get("question", "").strip()
-
-        if not question:
-            return jsonify({"error": "Question cannot be empty"}), 400
-
         # Parse per-request settings from headers (BYOK)
         req_settings = parse_request_settings(request.headers)
         llm_override = None
@@ -487,14 +498,10 @@ def upload_file():
 @app.route("/delete-file", methods=["POST"])
 def delete_file():
     """Delete a file from the knowledge base."""
-    data = request.get_json()
-    filename = data.get("filename", "")
-    
-    if not filename:
-        return jsonify({"error": "No filename provided"}), 400
-    
+    body = parse_body(DeleteFileRequest, request.get_json(silent=True))
+
     # Secure the filename to prevent path traversal
-    filename = secure_filename(filename)
+    filename = secure_filename(body.filename)
     ws_id = _current_workspace_id()
     filepath = str(workspace_manager.files_dir(ws_id) / filename)
 
@@ -615,10 +622,13 @@ def cache_clear():
     if not system_ready:
         return jsonify({"error": "System not ready"}), 503
 
+    # layer is validated by the schema (Literal) — an unknown layer is
+    # rejected here as a 400 before any cache work happens.
+    body = parse_body(CacheClearRequest, request.get_json(silent=True))
+    layer = body.layer
+
     try:
         rag = get_rag_for(_current_workspace_id())
-        data = request.get_json(silent=True) or {}
-        layer = data.get("layer", "all")
 
         cleared = {}
         if layer in ("all", "embedding"):
@@ -627,9 +637,6 @@ def cache_clear():
             cleared["response"] = rag.response_cache.clear()
         if layer in ("all", "semantic"):
             cleared["semantic"] = rag.semantic_cache.clear()
-
-        if not cleared:
-            return jsonify({"error": f"Unknown layer: {layer}"}), 400
 
         logger.info(f"{StatusEmoji.SUCCESS} Cache cleared: {cleared}")
         return jsonify({"success": True, "cleared": cleared})
@@ -652,24 +659,20 @@ def list_workspaces():
 @app.route("/workspaces", methods=["POST"])
 def create_workspace():
     """Create a new workspace from JSON body: {name, color?, description?, vector_db?}."""
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "Workspace name required"}), 400
+    body = parse_body(CreateWorkspaceRequest, request.get_json(silent=True))
 
-    vector_db = data.get("vector_db", "chroma")
-    if not VectorStoreFactory.is_available(vector_db):
+    if not VectorStoreFactory.is_available(body.vector_db):
         return jsonify({
-            "error": f"Unknown vector_db '{vector_db}'",
+            "error": f"Unknown vector_db '{body.vector_db}'",
             "available": [s["id"] for s in VectorStoreFactory.available()],
         }), 400
 
     try:
         ws = workspace_manager.create(
-            name=name,
-            color=data.get("color"),
-            description=data.get("description", ""),
-            vector_db=vector_db,
+            name=body.name,
+            color=body.color,
+            description=body.description,
+            vector_db=body.vector_db,
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -698,21 +701,20 @@ def update_workspace(ws_id):
     rebuilds it against the new DB. The user still needs to reindex —
     the old DB's vectors don't migrate.
     """
-    data = request.get_json(silent=True) or {}
+    body = parse_body(UpdateWorkspaceRequest, request.get_json(silent=True))
 
-    new_vector_db = data.get("vector_db")
-    if new_vector_db is not None:
-        if not VectorStoreFactory.is_available(new_vector_db):
-            return jsonify({
-                "error": f"Unknown vector_db '{new_vector_db}'",
-                "available": [s["id"] for s in VectorStoreFactory.available()],
-            }), 400
+    new_vector_db = body.vector_db
+    if new_vector_db is not None and not VectorStoreFactory.is_available(new_vector_db):
+        return jsonify({
+            "error": f"Unknown vector_db '{new_vector_db}'",
+            "available": [s["id"] for s in VectorStoreFactory.available()],
+        }), 400
 
     ws = workspace_manager.update(
         ws_id,
-        name=data.get("name"),
-        color=data.get("color"),
-        description=data.get("description"),
+        name=body.name,
+        color=body.color,
+        description=body.description,
         vector_db=new_vector_db,
     )
     if ws is None:
