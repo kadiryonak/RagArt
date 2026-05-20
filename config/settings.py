@@ -30,7 +30,11 @@ class Settings:
     @property
     def HUGGINGFACE_API_KEY(self) -> Optional[str]:
         return os.getenv("HUGGINGFACE_API_KEY")
-    
+
+    @property
+    def GROQ_API_KEY(self) -> Optional[str]:
+        return os.getenv("GROQ_API_KEY")
+
     @property
     def MODEL_TYPE(self) -> str:
         return os.getenv("MODEL_TYPE", "local")
@@ -70,6 +74,8 @@ class Settings:
             return self.OPENAI_API_KEY
         elif self.MODEL_TYPE == "huggingface":
             return self.HUGGINGFACE_API_KEY
+        elif self.MODEL_TYPE == "groq":
+            return self.GROQ_API_KEY
         return None
     
     @classmethod
