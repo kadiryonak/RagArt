@@ -341,7 +341,9 @@ def serve_source(filename):
         # to make traversal attempts loud rather than silent
         return jsonify({"error": "Invalid filename"}), 400
 
-    folder = os.path.abspath(settings.DATA_FOLDER)
+    ws_id = request.args.get("ws") or _current_workspace_id()
+    ws_id = workspace_manager.resolve(ws_id)
+    folder = str(workspace_manager.files_dir(ws_id))
     target = os.path.join(folder, safe)
     if not os.path.exists(target) or not os.path.isfile(target):
         return jsonify({"error": "Not found"}), 404
