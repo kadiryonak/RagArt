@@ -154,3 +154,8 @@ cache/
 
 # A/B evaluation history
 eval-history/
+
+
+
+skills-lock.json
+.agents

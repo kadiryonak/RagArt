@@ -20,16 +20,24 @@ methods/refs paylaşılmaz — test edilebilirlik için kritik.
 # satırında. Pipeline'ı son hâline getirirken hepsi açık olacak.
 from src.pipeline.stages.guard import GuardStage
 from src.pipeline.stages.classify import ClassifyStage
-# from src.pipeline.stages.cache_lookup import CacheLookupStage
-# from src.pipeline.stages.retrieval import RetrievalStage
-# from src.pipeline.stages.relevance import RelevanceGateStage
-# from src.pipeline.stages.context import ContextStage
-# from src.pipeline.stages.memory import MemoryStage
-# from src.pipeline.stages.execute import ExecuteStage
-# from src.pipeline.stages.response import ResponseStage
-# from src.pipeline.stages.cache_write import CacheWriteStage
+from src.pipeline.stages.cache_lookup import CacheLookupStage
+from src.pipeline.stages.retrieval import RetrievalStage
+from src.pipeline.stages.relevance import RelevanceGateStage
+from src.pipeline.stages.context import ContextStage
+from src.pipeline.stages.memory import MemoryStage
+from src.pipeline.stages.execute import ExecuteStage
+from src.pipeline.stages.response import ResponseStage
+from src.pipeline.stages.cache_write import CacheWriteStage
 
 __all__ = [
     "GuardStage",
     "ClassifyStage",
+    "CacheLookupStage",
+    "RetrievalStage",
+    "RelevanceGateStage",
+    "ContextStage",
+    "MemoryStage",
+    "ExecuteStage",
+    "ResponseStage",
+    "CacheWriteStage",
 ]

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "extract-design": {
+      "source": "Manavarya09/design-extract",
+      "sourceType": "github",
+      "skillPath": "skills/extract-design/SKILL.md",
+      "computedHash": "8f8ddd116df980ce792f8dbfecdff92ffe9a5ebaac10e373bce7e98a409e493d"
+    }
+  }
+}
