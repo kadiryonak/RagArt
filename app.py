@@ -233,6 +233,7 @@ def ask_question():
             retrieval_strategy=req_settings.retrieval_strategy,
             rerank=req_settings.rerank,
             rerank_fetch_k=req_settings.rerank_fetch_k,
+            selected_files=req_settings.selected_files,
             history=history,
             memory_strategy=req_settings.memory_strategy,
             deduplicate_context=req_settings.deduplicate_context,

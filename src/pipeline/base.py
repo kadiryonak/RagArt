@@ -53,6 +53,9 @@ class QueryRequest:
     retrieval_strategy: Optional[str] = None
     rerank: bool = False
     rerank_fetch_k: int = 20
+    # Empty tuple = retrieve from the whole knowledge base. Otherwise
+    # retrieval is restricted to documents whose source filename is listed.
+    selected_files: tuple = ()
     deduplicate_context: bool = False
     reorder_context: bool = False
     max_context_tokens: Optional[int] = None

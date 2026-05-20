@@ -370,6 +370,17 @@ class TurkishRAGSystem:
             )
         return self._reranker_cache[cache_key]
 
+    @staticmethod
+    def _doc_in_sources(metadata: dict, allowed: set) -> bool:
+        """True if the document's source filename is in the allowed set.
+
+        Loaders set metadata['source'] = file.name, but we take the basename
+        defensively in case a full path slipped into source / file_path.
+        """
+        raw = metadata.get("source") or metadata.get("file_path") or ""
+        name = str(raw).replace("\\", "/").rsplit("/", 1)[-1]
+        return name in allowed
+
     def search(
         self,
         query: str,
@@ -379,6 +390,7 @@ class TurkishRAGSystem:
         rerank: bool = False,
         rerank_fetch_k: int = 20,
         context_chain: Optional[ProcessorChain] = None,
+        allowed_sources: Optional[set] = None,
     ) -> List[Document]:
         """
         Search for relevant documents using the chosen retrieval strategy.
@@ -391,6 +403,8 @@ class TurkishRAGSystem:
             rerank_fetch_k: How many candidates to feed the reranker
             context_chain: Optional context-engineering processors applied
                            AFTER retrieval (dedup / token budget / reorder)
+            allowed_sources: If set, keep only documents whose source filename
+                             is in this set (per-file selection). None = all.
 
         Returns:
             List of relevant Document objects
@@ -398,12 +412,16 @@ class TurkishRAGSystem:
         retriever = self._select_retriever(
             strategy, rerank=rerank, rerank_fetch_k=rerank_fetch_k,
         )
+        # When restricting to a subset of files, over-fetch so enough
+        # candidates survive the source filter before we truncate back to k.
+        fetch_k = k if not allowed_sources else max(k * 6, 48)
+
         if retriever is None:
             # Legacy fallback path — no context processors applied
             if not self.vector_store:
                 return []
             try:
-                return self.vector_store.similarity_search(query, k=k)
+                docs = self.vector_store.similarity_search(query, k=fetch_k)
             except Exception as e:
                 logger.error(
                     f"{StatusEmoji.ERROR} Stale vector_store ({type(e).__name__}: {e}). "
@@ -411,9 +429,15 @@ class TurkishRAGSystem:
                 )
                 # Tell ask() the index is gone by raising a recognisable error
                 raise RuntimeError("STALE_INDEX") from e
+            if allowed_sources:
+                docs = [
+                    d for d in docs
+                    if self._doc_in_sources(d.metadata, allowed_sources)
+                ]
+            return docs[:k]
 
         try:
-            retrieved = retriever.retrieve(query, k=k)
+            retrieved = retriever.retrieve(query, k=fetch_k)
         except Exception as e:
             err = str(e)
             # ChromaDB throws "Collection [UUID] does not exist" when the
@@ -429,6 +453,14 @@ class TurkishRAGSystem:
                 self._reranker_cache.clear()
                 raise RuntimeError("STALE_INDEX") from e
             raise
+
+        # Per-file selection: keep only the chosen sources, then truncate to k
+        # (we over-fetched above so the filter has room to work).
+        if allowed_sources:
+            retrieved = [
+                r for r in retrieved
+                if self._doc_in_sources(r.metadata, allowed_sources)
+            ][:k]
 
         # Apply context engineering processors (if configured) on the
         # RetrievedDoc layer so processors can see retrieval scores.
@@ -603,6 +635,7 @@ class TurkishRAGSystem:
         retrieval_strategy: Optional[str] = None,
         rerank: bool = False,
         rerank_fetch_k: int = 20,
+        selected_files: Optional[List[str]] = None,
         history: Optional[List[ConversationTurn]] = None,
         memory_strategy: Optional[str] = None,
         deduplicate_context: bool = False,
@@ -640,6 +673,7 @@ class TurkishRAGSystem:
             retrieval_strategy=retrieval_strategy,
             rerank=rerank,
             rerank_fetch_k=rerank_fetch_k,
+            selected_files=tuple(selected_files or ()),
             history=tuple(history or ()),
             memory_strategy=memory_strategy,
             deduplicate_context=deduplicate_context,

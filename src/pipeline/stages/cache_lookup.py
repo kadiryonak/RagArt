@@ -51,6 +51,9 @@ def _build_cache_payload(state: QueryState) -> Dict[str, Any]:
         "max_context_tokens": r.max_context_tokens,
         "llm_params": dict(r.llm_params),
         "provider": provider_id,
+        # File selection changes which docs are retrievable → changes the
+        # answer, so it must be part of the key. Sorted: order is irrelevant.
+        "selected_files": sorted(r.selected_files),
         # History affects the answer (memory context), so it belongs in the
         # key. hash(r.history) would crash — ConversationTurn isn't hashable;
         # to_dict() gives a JSON-serializable, deterministic form instead.

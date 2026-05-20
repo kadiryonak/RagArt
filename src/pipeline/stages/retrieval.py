@@ -51,12 +51,16 @@ class RetrievalStage(PipelineStage):
 
         provider = r.llm_provider or rag.llm_provider
 
+        # Per-file selection: empty → no filter (whole knowledge base).
+        allowed_sources = set(r.selected_files) or None
+
         # Local retrieve closure — multi-query'de de aynı parametrelerle çağrılır
         def _retrieve(q: str, kk: int):
             return rag.search(
                 q, k=kk, strategy=effective_strategy,
                 rerank=effective_rerank, rerank_fetch_k=r.rerank_fetch_k,
                 context_chain=context_chain,
+                allowed_sources=allowed_sources,
             )
 
         from src.prompt_strategies.base import StrategyContext

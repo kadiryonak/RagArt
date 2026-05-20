@@ -381,6 +381,18 @@ class TestRetrievalStage:
         assert len(s.docs) == 2
         assert s.docs[0].metadata["source"] == "a.json"
 
+    def test_no_file_selection_passes_none_allowed_sources(self):
+        s, _ = _state_with_retrievers()
+        RetrievalStage().run(s)
+        assert s.rag.search.call_args.kwargs["allowed_sources"] is None
+
+    def test_file_selection_passes_allowed_sources_set(self):
+        s, _ = _state_with_retrievers(selected_files=("a.json", "b.json"))
+        RetrievalStage().run(s)
+        assert s.rag.search.call_args.kwargs["allowed_sources"] == {
+            "a.json", "b.json",
+        }
+
     def test_writes_strategy_and_ctx(self):
         s, strategy_mock = _state_with_retrievers()
         RetrievalStage().run(s)

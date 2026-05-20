@@ -22,6 +22,7 @@ def client(monkeypatch):
 
     def stub_ask(question, *, k=5, llm_provider=None, llm_params=None,
                  retrieval_strategy=None, rerank=False, rerank_fetch_k=20,
+                 selected_files=None,
                  history=None, memory_strategy=None,
                  deduplicate_context=False, reorder_context=False,
                  max_context_tokens=None,
@@ -35,6 +36,7 @@ def client(monkeypatch):
         captured["retrieval_strategy"] = retrieval_strategy
         captured["rerank"] = rerank
         captured["rerank_fetch_k"] = rerank_fetch_k
+        captured["selected_files"] = selected_files or []
         captured["history"] = history or []
         captured["memory_strategy"] = memory_strategy
         captured["deduplicate_context"] = deduplicate_context
@@ -313,6 +315,22 @@ class TestAskWithBYOK:
                    headers={"X-Context-Max-Tokens": "1500"})
         assert r.status_code == 200
         assert captured["max_context_tokens"] == 1500
+
+    def test_selected_files_header(self, client):
+        import base64
+        import json as _json
+        c, captured, _ = client
+        payload = _json.dumps(["rapor.pdf", "Şablon.docx"])
+        enc = "b64:" + base64.b64encode(payload.encode("utf-8")).decode("ascii")
+        r = c.post("/ask", json={"question": "x"},
+                   headers={"X-Selected-Files": enc})
+        assert r.status_code == 200
+        assert captured["selected_files"] == ["rapor.pdf", "Şablon.docx"]
+
+    def test_selected_files_absent_defaults_empty(self, client):
+        c, captured, _ = client
+        c.post("/ask", json={"question": "x"})
+        assert captured["selected_files"] == []
 
     def test_context_max_tokens_clamped(self, client):
         c, captured, _ = client

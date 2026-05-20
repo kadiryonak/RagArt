@@ -402,6 +402,17 @@ a:hover{text-decoration:underline}
 .file-row .f-del svg{width:14px;height:14px}
 .f-progress{height:4px;border-radius:3px;background:var(--border);overflow:hidden;margin-top:7px}
 .f-progress span{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+.file-row .f-pick{display:flex;align-items:center;flex-shrink:0;cursor:pointer}
+.file-row .f-pick input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:0}
+.file-row.f-row-off{opacity:.6}
+.file-row.f-row-off .f-name{text-decoration:line-through;color:var(--text-muted)}
+.files-head{display:flex;align-items:baseline;justify-content:space-between;
+  gap:10px 16px;flex-wrap:wrap;margin-top:18px}
+.file-select-bar{display:flex;align-items:center;gap:10px}
+.file-select-bar .f-pick{display:flex;align-items:center;gap:5px;cursor:pointer;
+  font-size:12px;font-weight:500;color:var(--text-secondary)}
+.file-select-bar .f-pick input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0}
+.file-select-bar .hint{font-size:11.5px;color:var(--text-muted)}
 .reindex-row{
   display:flex;align-items:center;gap:14px;margin-top:18px;padding-top:16px;
   border-top:1px dashed var(--border);flex-wrap:wrap;
@@ -757,7 +768,13 @@ input[type=range]{flex:1;accent-color:var(--accent)}
           <div class="formats">Desteklenen: .json .pdf .docx .md .txt &nbsp;·&nbsp; max 16MB</div>
           <input type="file" id="fileInput" multiple accept=".json,.pdf,.docx,.md,.txt" class="hide">
         </div>
-        <div style="margin-top:18px"><div class="panel-label">Yüklü Dosyalar</div></div>
+        <div class="files-head">
+          <div class="panel-label">Yüklü Dosyalar</div>
+          <div id="fileSelectBar" class="file-select-bar hide">
+            <label class="f-pick"><input type="checkbox" id="selectAllFiles"> Tümünü seç</label>
+            <span id="fileSelectHint" class="hint"></span>
+          </div>
+        </div>
         <div id="fileList"></div>
         <div class="reindex-row">
           <button class="btn success" id="reindexBtn">
@@ -1356,7 +1373,16 @@ function providerNeedsKey(id){
 }
 function buildHeaders(){
   const s=state.settings, h={'Content-Type':'application/json'};
-  if(state.activeWorkspace) h['X-Workspace-Id']=state.activeWorkspace.id;
+  if(state.activeWorkspace){
+    h['X-Workspace-Id']=state.activeWorkspace.id;
+    const files=state.activeWorkspace._files;
+    if(Array.isArray(files)&&files.length){
+      const sel=files.filter(f=>f.selected!==false).map(f=>f.name);
+      // Omit the header when everything is selected — empty filter on the
+      // server = retrieve from the whole knowledge base (faster path).
+      if(sel.length!==files.length) h['X-Selected-Files']='b64:'+b64(JSON.stringify(sel));
+    }
+  }
   const provider=(s.provider||'').trim();
   const key=provider?s.apiKeys[provider]:'';
   const sendProvider=provider && (!providerNeedsKey(provider) || key);
@@ -1842,6 +1868,11 @@ function updateCharCount(){
 async function doAsk(){
   const q=$('#qInput').value.trim();
   if(!q){ toast('warning','Soru boş','Lütfen bir soru yazın.'); $('#qInput').focus(); return; }
+  const wsFiles=state.activeWorkspace&&state.activeWorkspace._files;
+  if(Array.isArray(wsFiles)&&wsFiles.length&&!wsFiles.some(f=>f.selected!==false)){
+    toast('warning','Dosya seçili değil','Soru sormak için Dosyalar sekmesinden en az bir dosya seçin.');
+    return;
+  }
   if(state.currentAsk){ state.currentAsk.abort(); }
   const ctrl=new AbortController();
   state.currentAsk=ctrl;
@@ -2009,12 +2040,36 @@ function scrollToSource(n){
 async function initFilesTab(){
   const list=$('#fileList');
   list.innerHTML='<div class="file-row"><div class="skel" style="width:100%;height:18px"></div></div>'.repeat(2);
+  // Preserve per-file selection across tab reloads (in-memory only).
+  const prev={};
+  (state.activeWorkspace._files||[]).forEach(f=>{ prev[f.name]=f.selected; });
   const files=await API.files();
+  files.forEach(f=>{ f.selected = (f.name in prev) ? prev[f.name]!==false : true; });
   state.activeWorkspace._files=files;
   state.activeWorkspace.file_count=files.length;
   paintFiles();
   $('#emptyWsNote').classList.toggle('hide',files.length>0);
   updateStatusBar();
+}
+/* Selected files drive the X-Selected-Files header — only those are
+   used for retrieval. f.selected===undefined counts as selected. */
+function updateFileSelectBar(){
+  const files=(state.activeWorkspace&&state.activeWorkspace._files)||[];
+  const bar=$('#fileSelectBar');
+  if(!bar) return;
+  if(!files.length){ bar.classList.add('hide'); return; }
+  bar.classList.remove('hide');
+  const sel=files.filter(f=>f.selected!==false).length;
+  const all=$('#selectAllFiles');
+  if(all){ all.checked=sel===files.length; all.indeterminate=sel>0&&sel<files.length; }
+  const hint=$('#fileSelectHint');
+  if(hint){
+    hint.textContent = sel===files.length
+      ? sel+'/'+files.length+' dosya — sorular tüm dosyalardan yanıtlanır'
+      : sel===0
+        ? 'Hiçbir dosya seçili değil — soru yanıtlanamaz'
+        : sel+'/'+files.length+' dosya seçili — yalnızca bunlardan yanıtlanır';
+  }
 }
 function paintFiles(){
   const files=state.activeWorkspace._files||[];
@@ -2022,19 +2077,27 @@ function paintFiles(){
   if(!files.length){
     list.innerHTML='<div class="answer-empty" style="padding:20px">'+ICON.file+
       '<div>Bu alanda henüz dosya yok.</div></div>';
+    updateFileSelectBar();
     return;
   }
   list.innerHTML='';
   files.forEach(f=>{
+    if(f.selected===undefined) f.selected=true;
     const row=document.createElement('div');
-    row.className='file-row';
+    row.className='file-row'+(f.selected?'':' f-row-off');
     row.innerHTML=
+      '<label class="f-pick" title="Sorularda bu dosyayı kullan"><input type="checkbox"'+(f.selected?' checked':'')+'></label>'+
       '<div class="f-ico">'+ICON.file+'</div>'+
       '<span class="f-name">'+escapeHtml(f.name)+'</span>'+
       '<span class="fmt-badge">'+escapeHtml(f.format||'')+'</span>'+
       '<span class="f-meta">'+fmtSize(f.size||0)+'</span>'+
       '<span class="f-meta">'+(f.docs||0)+' parça</span>'+
       '<button class="f-del" aria-label="'+escapeHtml(f.name)+' sil" title="Sil">'+ICON.trash+'</button>';
+    row.querySelector('.f-pick input').onchange=e=>{
+      f.selected=e.target.checked;
+      row.classList.toggle('f-row-off',!f.selected);
+      updateFileSelectBar();
+    };
     row.querySelector('.f-del').onclick=async()=>{
       row.style.opacity='.4';
       await API.deleteFile(f.name);
@@ -2047,6 +2110,7 @@ function paintFiles(){
     };
     list.appendChild(row);
   });
+  updateFileSelectBar();
 }
 async function handleFiles(fileList){
   const allowed=['json','pdf','docx','md','txt'];
@@ -2082,7 +2146,8 @@ async function uploadOne(file,ext){
     state.activeWorkspace._files=state.activeWorkspace._files||[];
     // Server may sanitize the name / overwrite an existing file — dedupe.
     state.activeWorkspace._files=state.activeWorkspace._files.filter(x=>x.name!==name);
-    state.activeWorkspace._files.unshift({name,format:fmt,size:file.size,docs});
+    // Newly uploaded files start selected (ilk yüklemede tikli).
+    state.activeWorkspace._files.unshift({name,format:fmt,size:file.size,docs,selected:true});
     state.activeWorkspace.file_count=state.activeWorkspace._files.length;
     paintFiles();
     $('#emptyWsNote').classList.add('hide');
@@ -2376,6 +2441,12 @@ function bindEvents(){
   ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{ e.preventDefault(); dz.classList.remove('drag'); }));
   dz.addEventListener('drop',e=>{ if(e.dataTransfer&&e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
   $('#reindexBtn').onclick=doReindex;
+  const selAll=$('#selectAllFiles');
+  if(selAll) selAll.onchange=()=>{
+    const files=(state.activeWorkspace&&state.activeWorkspace._files)||[];
+    files.forEach(f=>{ f.selected=selAll.checked; });
+    paintFiles();
+  };
 
   /* settings controls */
   $('#setProvider').onchange=e=>{
