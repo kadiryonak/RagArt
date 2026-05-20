@@ -160,16 +160,24 @@ class Pipeline:
         Stage'lerden hiçbiri response set etmezse bu bir bug — RuntimeError.
         Sonuç dict'ine pipeline timing'leri 'timings' key'i altında eklenir
         (observability için faydalı, UI bunu gösterip gizleyebilir).
+
+        ÖNEMLİ: response set edildikten sonra DA tüm stage'lere uğrarız.
+        Stage.__call__ varsayılan olarak short-circuit yapar (kendi run'unu
+        atlar) — ama groundedness/cache_write gibi "post-response" stage'ler
+        __call__'u override ederek her durumda çalışır. Pipeline.run()
+        burada erken çıkış yapmaz; bu sayede bu post-response stage'ler
+        timings'e + final response'a kayıt yapabilir.
         """
         state = QueryState(request=request, rag=rag)
         for stage in self.stages:
             state = stage(state)
-            if state.response is not None:
-                # Inject timings before returning
-                state.response.setdefault("timings", dict(state.timings))
-                return state.response
-        # Buraya gelmek = bug; son stage response üretmeli.
-        raise RuntimeError(
-            f"Pipeline finished without producing a response "
-            f"(stages run: {list(state.timings.keys())})"
-        )
+        if state.response is None:
+            # En az bir stage response üretmek zorundaydı.
+            raise RuntimeError(
+                f"Pipeline finished without producing a response "
+                f"(stages run: {list(state.timings.keys())})"
+            )
+        # Inject timings into the final dict (don't overwrite if a stage
+        # already added one — they shouldn't, but be defensive).
+        state.response.setdefault("timings", dict(state.timings))
+        return state.response

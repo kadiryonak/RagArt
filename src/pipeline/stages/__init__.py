@@ -27,6 +27,7 @@ from src.pipeline.stages.context import ContextStage
 from src.pipeline.stages.memory import MemoryStage
 from src.pipeline.stages.execute import ExecuteStage
 from src.pipeline.stages.response import ResponseStage
+from src.pipeline.stages.groundedness import GroundednessStage
 from src.pipeline.stages.cache_write import CacheWriteStage
 
 __all__ = [
@@ -39,5 +40,6 @@ __all__ = [
     "MemoryStage",
     "ExecuteStage",
     "ResponseStage",
+    "GroundednessStage",
     "CacheWriteStage",
 ]

@@ -553,6 +553,46 @@ class TurkishRAGSystem:
             return None
         return ProcessorChain(processors)
 
+    # ── Pipeline-based ask() ─────────────────────────────────────────
+    #
+    # The previous ask() was a 300-line monolith juggling guard / classify /
+    # cache / retrieval / relevance / context / memory / execute / response /
+    # cache-write in one body. It is now a thin wrapper around the
+    # PipelineStage chain in src/pipeline/stages/. Each concern is its own
+    # tested stage; this method only:
+    #   1. builds a frozen QueryRequest from kwargs
+    #   2. runs the pipeline
+    #   3. maps known exceptions (stale index) to the existing response shape
+    # All previous return shapes are preserved verbatim for backward compat.
+
+    _PIPELINE_STAGES = None  # lazy-built class attribute (see _get_pipeline)
+
+    @classmethod
+    def _get_pipeline(cls):
+        """Lazy-build the pipeline once; reused across all ask() calls."""
+        if cls._PIPELINE_STAGES is None:
+            from src.pipeline import Pipeline
+            from src.pipeline.stages import (
+                GuardStage, ClassifyStage, CacheLookupStage,
+                RetrievalStage, RelevanceGateStage, ContextStage,
+                MemoryStage, ExecuteStage, ResponseStage,
+                GroundednessStage, CacheWriteStage,
+            )
+            cls._PIPELINE_STAGES = Pipeline([
+                GuardStage(),
+                ClassifyStage(),
+                CacheLookupStage(),
+                RetrievalStage(),
+                RelevanceGateStage(),
+                ContextStage(),
+                MemoryStage(),
+                ExecuteStage(),
+                ResponseStage(),
+                GroundednessStage(),
+                CacheWriteStage(),
+            ])
+        return cls._PIPELINE_STAGES
+
     def ask(
         self,
         question: str,
@@ -576,266 +616,51 @@ class TurkishRAGSystem:
         use_semantic_cache: bool = False,
         semantic_cache_threshold: float = 0.92,
     ) -> Dict[str, Any]:
+        """Answer a question using the RAG pipeline.
+
+        Thin wrapper around the staged pipeline. Each stage is independently
+        unit-tested in tests/test_pipeline_stages.py.
         """
-        Ask a question and get an answer using the RAG system.
-        
-        Args:
-            question: The question in Turkish
-            k: Number of context documents to retrieve
-            
-        Returns:
-            Dictionary containing:
-            - question: Original question
-            - answer: Generated answer
-            - source_documents: List of source documents used
-            - context_used: Context text used
-            - source: Answer source ('rag_system', 'deepseek_fallback', etc.)
-            - relevance_score: Relevance score of retrieved documents
-        """
+        # Defensive: vector_store must exist before retrieval can run.
         if not self.vector_store:
             return {
                 "question": question,
                 "answer": f"{StatusEmoji.WARNING} Vector store not initialized!",
                 "source_documents": [],
                 "context_used": "",
-                "source": "error"
+                "source": "error",
             }
-        
+
+        from src.pipeline import QueryRequest
+        request = QueryRequest(
+            question=question,
+            k=k,
+            llm_provider=llm_provider,
+            llm_params=dict(llm_params or {}),
+            retrieval_strategy=retrieval_strategy,
+            rerank=rerank,
+            rerank_fetch_k=rerank_fetch_k,
+            history=tuple(history or ()),
+            memory_strategy=memory_strategy,
+            deduplicate_context=deduplicate_context,
+            reorder_context=reorder_context,
+            max_context_tokens=max_context_tokens,
+            allow_general_knowledge_fallback=allow_general_knowledge_fallback,
+            prompt_strategy=prompt_strategy,
+            custom_role=custom_role,
+            custom_prompt_template=custom_prompt_template,
+            use_response_cache=use_response_cache,
+            use_semantic_cache=use_semantic_cache,
+            semantic_cache_threshold=semantic_cache_threshold,
+        )
+
         try:
-            # ── Security: prompt injection check ─────────────────────
-            guard_result = InputGuard.check(question)
-            if not guard_result.is_safe:
-                logger.warning(
-                    f"{StatusEmoji.WARNING} Prompt injection detected "
-                    f"(score={guard_result.score:.2f}, reason={guard_result.reason})"
-                )
-                return {
-                    "question": question,
-                    "answer": InputGuard.rejection_message(),
-                    "source_documents": [],
-                    "context_used": "",
-                    "source": "guard_blocked",
-                    "relevance_score": 0.0,
-                    "guard_score": guard_result.score,
-                    "guard_reason": guard_result.reason,
-                }
-
-            # ── Adaptive retrieval ─────────────────────────────────────
-            complexity = QueryClassifier.classify(question)
-            adaptive_cfg = QueryClassifier.get_config(complexity)
-            logger.info(f"{StatusEmoji.INFO} Query complexity: {complexity.value}")
-
-            # Greeting → skip everything, return fast
-            if adaptive_cfg.skip_retrieval:
-                logger.info(f"{StatusEmoji.SUCCESS} Greeting detected, skipping retrieval")
-                return {
-                    "question": question,
-                    "answer": greeting_response(question),
-                    "source_documents": [],
-                    "context_used": "",
-                    "source": "greeting",
-                    "relevance_score": 1.0,
-                    "retrieval_strategy": "none",
-                    "memory_strategy": "none",
-                    "memory_used": False,
-                    "prompt_strategy": "adaptive",
-                    "cache_hit": False,
-                    "query_complexity": complexity.value,
-                }
-
-            # Override k / strategy / rerank from adaptive config
-            # (only if caller didn't explicitly set them)
-            if k == 4:  # default value → use adaptive
-                k = adaptive_cfg.k
-            if retrieval_strategy is None:
-                retrieval_strategy = adaptive_cfg.retrieval_strategy
-            if not rerank and adaptive_cfg.rerank:
-                rerank = True
-
-            # ── Cache lookup ──────────────────────────────────────────
-            # Build a payload dict capturing every param that affects the
-            # answer so exact-match cache works correctly.
-            cache_payload = {
-                "question": question,
-                "k": k,
-                "retrieval_strategy": retrieval_strategy,
-                "rerank": rerank,
-                "rerank_fetch_k": rerank_fetch_k,
-                "prompt_strategy": prompt_strategy,
-                "custom_role": custom_role,
-                "custom_prompt_template": custom_prompt_template,
-                "memory_strategy": memory_strategy,
-                "deduplicate_context": deduplicate_context,
-                "reorder_context": reorder_context,
-                "max_context_tokens": max_context_tokens,
-                "llm_params": dict(llm_params or {}),
-                "provider": getattr(llm_provider, "model", self.model_type),
-            }
-
-            # 1) Exact response cache
-            if use_response_cache:
-                cached = self.response_cache.get(cache_payload)
-                if cached is not None:
-                    logger.info(f"{StatusEmoji.SUCCESS} Response cache HIT (exact)")
-                    cached["cache_hit"] = "exact"
-                    return cached
-
-            # 2) Semantic cache (cosine similarity ≥ threshold)
-            if use_semantic_cache:
-                sem_result, sim = self.semantic_cache.get(question)
-                if sem_result is not None:
-                    logger.info(
-                        f"{StatusEmoji.SUCCESS} Semantic cache HIT "
-                        f"(sim={sim:.3f} ≥ {semantic_cache_threshold})"
-                    )
-                    sem_result["cache_hit"] = f"semantic({sim:.3f})"
-                    return sem_result
-
-            # ── Normal retrieval path ─────────────────────────────────
-            # Build context-engineering chain (None if no flags set)
-            context_chain = self._build_context_chain(
-                deduplicate=deduplicate_context,
-                reorder=reorder_context,
-                max_context_tokens=max_context_tokens,
-            )
-            context_label_parts = []
-            if deduplicate_context:
-                context_label_parts.append("dedup")
-            if max_context_tokens is not None:
-                context_label_parts.append(f"budget={max_context_tokens}")
-            if reorder_context:
-                context_label_parts.append("reorder")
-            context_label = "+ctx[" + ",".join(context_label_parts) + "]" if context_label_parts else ""
-
-            # Resolve prompt strategy + build the strategy execution
-            # context that multi-step strategies will need.
-            strategy = self._resolve_prompt_strategy(
-                prompt_strategy,
-                custom_role=custom_role,
-                custom_prompt_template=custom_prompt_template,
-            )
-            provider = llm_provider or self.llm_provider
-
-            def _retrieve(q: str, kk: int):
-                return self.search(
-                    q, k=kk, strategy=retrieval_strategy,
-                    rerank=rerank, rerank_fetch_k=rerank_fetch_k,
-                    context_chain=context_chain,
-                )
-
-            strategy_ctx = StrategyContext(
-                llm=provider,
-                retrieve_fn=_retrieve,
-                embed_fn=self.embedding_manager.embed_query,
-                llm_params=dict(llm_params or {}),
-            )
-
-            # Search for relevant documents — multi-query strategies expand
-            # the original question into N variants, retrieve per variant
-            # and fuse with RRF; single-query strategies just retrieve once.
-            strategy_label = (
-                (retrieval_strategy or "auto")
-                + ("+rerank" if rerank else "")
-                + context_label
-                + f"+prompt[{strategy.name}]"
-            )
-            logger.info(
-                f"{StatusEmoji.SEARCH} Searching ({strategy_label}) for: '{question}'..."
-            )
-
-            if strategy.is_multi_query:
-                variants = strategy.generate_query_variations(question, strategy_ctx)
-                logger.info(
-                    f"{StatusEmoji.INFO} Multi-query expanded to {len(variants)} variants"
-                )
-                relevant_docs = self._fuse_retrievals(variants, k, _retrieve)
-            else:
-                relevant_docs = _retrieve(question, k)
-            
-            # Calculate relevance score
-            relevance_score = self.calculate_relevance_score(question, relevant_docs)
-            logger.info(f"{StatusEmoji.INFO} Relevance score: {relevance_score:.3f}")
-            
-            # Check if we have sufficient context
-            if not relevant_docs or relevance_score < self.RELEVANCE_THRESHOLD:
-                logger.info(f"{StatusEmoji.INFO} Insufficient context, using fallback...")
-                return self._fallback_response(
-                    question, relevance_score,
-                    llm_provider=llm_provider, llm_params=llm_params,
-                    allow_general_knowledge=allow_general_knowledge_fallback,
-                )
-            
-            # Build context from documents
-            context_parts = []
-            for i, doc in enumerate(relevant_docs, 1):
-                source = doc.metadata.get("source", "Unknown")
-                context_parts.append(f"[Source {i} - {source}]\n{doc.page_content}")
-            
-            context = "\n\n".join(context_parts)
-
-            # Apply memory strategy (returns "" if NoMemory or empty history)
-            memory = self._build_memory(memory_strategy, llm_for_summary=llm_provider)
-            memory_context = memory.apply(history or [], question).strip()
-
-            provider_label = getattr(provider, "model", self.model_type)
-            logger.info(
-                f"{StatusEmoji.ROBOT} Generating ({provider_label}) "
-                f"via strategy={strategy.name}..."
-            )
-
-            # Strategy owns the prompt construction AND any extra LLM calls
-            # (CoT extracts the YANIT block; multi-step ones can override).
-            answer = strategy.execute(
-                strategy_ctx,
-                question=question,
-                context=context,
-                memory_context=memory_context,
-            )
-            
-            # Build result
-            result = {
-                "question": question,
-                "answer": answer,
-                "source_documents": [
-                    {
-                        "content": doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content,
-                        "source": doc.metadata.get("source", "Unknown"),
-                        "metadata": doc.metadata
-                    }
-                    for doc in relevant_docs
-                ],
-                "context_used": context[:500] + "..." if len(context) > 500 else context,
-                "source": "rag_system",
-                "relevance_score": relevance_score,
-                "retrieval_strategy": strategy_label,
-                "memory_strategy": memory_strategy or "none",
-                "memory_used": bool(memory_context),
-                "prompt_strategy": strategy.name,
-                "cache_hit": False,
-                "query_complexity": complexity.value,
-            }
-
-            # ── Groundedness check ────────────────────────────────────
-            g_score = GroundednessScorer.score(answer, context)
-            result["groundedness_score"] = round(g_score, 3)
-            if not GroundednessScorer.is_grounded(g_score):
-                result["groundedness_warning"] = True
-                logger.warning(
-                    f"{StatusEmoji.WARNING} Low groundedness: {g_score:.3f}"
-                )
-
-            # ── Cache persist ─────────────────────────────────────────
-            # Only cache successful answers (avoid caching errors/refusals).
-            if use_response_cache and answer:
-                self.response_cache.set(cache_payload, result)
-            if use_semantic_cache and answer:
-                self.semantic_cache.set(question, result)
-
-            return result
-
+            return self._get_pipeline().run(request, rag=self)
         except Exception as e:
+            # Preserve the legacy STALE_INDEX magic-string handling so existing
+            # callers see the same friendly Turkish response. Phase B of the
+            # refactor will replace this with a proper StaleIndexError.
             if isinstance(e, RuntimeError) and str(e) == "STALE_INDEX":
-                # Friendly Turkish message — UI surfaces this directly
                 logger.error(f"{StatusEmoji.ERROR} Stale index detected")
                 return {
                     "question": question,
@@ -856,9 +681,9 @@ class TurkishRAGSystem:
                 "answer": f"{StatusEmoji.ERROR} Error: {str(e)}",
                 "source_documents": [],
                 "context_used": "",
-                "source": "error"
+                "source": "error",
             }
-    
+
     def _fallback_response(
         self,
         question: str,
