@@ -33,6 +33,7 @@ from src.api.schemas import (
     UpdateWorkspaceRequest,
     parse_body,
 )
+from src.services import RagRegistry
 
 # Setup logging — install_logging() replaces the legacy setup_logging
 # with the request-id aware version. We keep setup_logging() above for
@@ -68,13 +69,12 @@ def allowed_file(filename: str) -> bool:
 # ----- Global state — workspaces + lazy RAG cache -----
 #
 # Workspaces are NotebookLM-style isolated knowledge bases. Each workspace
-# has its own data folder and ChromaDB collection. We keep one RAG
-# instance per workspace (lazily created on first use) so the embedder
-# model can be shared while the vector store is separate.
+# has its own data folder and ChromaDB collection. The per-workspace RAG
+# lifecycle (lazy build, thread-safe cache, invalidation) lives in the
+# RagRegistry service — app.py just holds a singleton instance.
 
 workspace_manager = WorkspaceManager(settings.DATA_FOLDER)
-_rag_cache: dict = {}
-_rag_init_lock = threading.Lock()
+rag_registry = RagRegistry(workspace_manager)
 
 # Sample data seeding: ensure the default workspace has SOMETHING
 _default_files_dir = workspace_manager.files_dir(DEFAULT_WORKSPACE_ID)
@@ -86,46 +86,14 @@ system_status = "Initializing..."
 initialization_error = None
 
 
-def _build_rag_for_workspace(workspace_id: str) -> TurkishRAGSystem:
-    """Build (or retrieve) a fresh RAG instance scoped to a workspace."""
-    ws = workspace_manager.get(workspace_id)
-    if ws is None:
-        workspace_id = workspace_manager.resolve(workspace_id)
-        ws = workspace_manager.get(workspace_id)
-
-    api_key = settings.get_api_key()
-    model_type = settings.MODEL_TYPE
-    if model_type in ("deepseek", "openai", "groq", "huggingface") and not api_key:
-        logger.warning(
-            f"{StatusEmoji.WARNING} No API key found, falling back to local model"
-        )
-        model_type = "local"
-
-    persist_path = workspace_manager.vector_db_path(workspace_id, ws.vector_db)
-    rag = TurkishRAGSystem(
-        data_folder=str(workspace_manager.files_dir(workspace_id)),
-        model_type=model_type,
-        api_key=api_key,
-        chroma_db_path=str(persist_path),
-    )
-    rag.initialize()
-    return rag
-
-
 def get_rag_for(workspace_id: str) -> TurkishRAGSystem:
     """Return the cached RAG for a workspace, building lazily under lock."""
-    workspace_id = workspace_manager.resolve(workspace_id)
-    if workspace_id in _rag_cache:
-        return _rag_cache[workspace_id]
-    with _rag_init_lock:
-        if workspace_id not in _rag_cache:
-            _rag_cache[workspace_id] = _build_rag_for_workspace(workspace_id)
-    return _rag_cache[workspace_id]
+    return rag_registry.get(workspace_id)
 
 
 def invalidate_rag(workspace_id: str) -> None:
     """Force the next get_rag_for() call to rebuild the cache entry."""
-    _rag_cache.pop(workspace_id, None)
+    rag_registry.invalidate(workspace_id)
 
 
 def _current_workspace_id() -> str:
@@ -165,7 +133,7 @@ def index():
 def get_status():
     """Get system status (for the current workspace if header is set)."""
     ws_id = workspace_manager.resolve(request.headers.get("X-Workspace-Id"))
-    rag = _rag_cache.get(ws_id)
+    rag = rag_registry.cached(ws_id)
     return jsonify({
         "ready": system_ready and (rag is not None or ws_id == DEFAULT_WORKSPACE_ID),
         "status": system_status,
@@ -388,7 +356,7 @@ def settings_schema():
 def health_check():
     """Health check endpoint."""
     ws_id = _current_workspace_id()
-    rag = _rag_cache.get(ws_id)
+    rag = rag_registry.cached(ws_id)
     return jsonify({
         "status": "healthy",
         "system_ready": system_ready,
