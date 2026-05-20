@@ -170,9 +170,31 @@ class TestCacheLookupStage:
         for required in (
             "question", "k", "retrieval_strategy", "rerank",
             "prompt_strategy", "memory_strategy",
-            "llm_params", "provider", "history_hash",
+            "llm_params", "provider", "history",
         ):
             assert required in keys, required
+
+    def test_payload_serialises_conversation_history(self):
+        # Regression: hash(r.history) crashed with "unhashable type:
+        # ConversationTurn" once history had turns. The payload must hold a
+        # JSON-serialisable form instead.
+        import json
+
+        from src.memory import ConversationTurn
+
+        history = (
+            ConversationTurn(role="user", content="Algoritma nedir?"),
+            ConversationTurn(role="assistant", content="Adım adım yöntem."),
+        )
+        s = _state_with_caches("Astronomi nedir?", history=history)
+        s.rag.response_cache.get.return_value = None
+        CacheLookupStage().run(s)
+        assert s.cache_payload["history"] == [
+            {"role": "user", "content": "Algoritma nedir?"},
+            {"role": "assistant", "content": "Adım adım yöntem."},
+        ]
+        # Must survive the same canonicalisation ResponseCache.make_key does.
+        json.dumps(s.cache_payload, sort_keys=True, default=str)
 
     def test_exact_hit_short_circuits(self):
         s = _state_with_caches()
