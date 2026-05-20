@@ -100,7 +100,10 @@ class TestTurkishRAGSystem:
     def test_calculate_relevance_score(self, temp_data_folder, mock_embeddings, mock_chroma):
         """Test relevance score calculation."""
         from src.rag_system import TurkishRAGSystem
-        from langchain.schema import Document
+        try:
+            from langchain_core.documents import Document
+        except ImportError:  # older langchain
+            from langchain.schema import Document
         
         rag = TurkishRAGSystem(data_folder=temp_data_folder, model_type="local")
         

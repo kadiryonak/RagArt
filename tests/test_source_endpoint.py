@@ -12,11 +12,20 @@ import pytest
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    """Test client with isolated DATA_FOLDER."""
+    """Test client with an isolated workspace rooted at tmp_path.
+
+    /source resolves files via the module-level workspace_manager (not
+    settings.DATA_FOLDER), so we swap in a fresh manager rooted at tmp_path
+    and hand the test the default workspace's files dir to write into.
+    """
     import app as app_module
-    monkeypatch.setattr(app_module.settings, "DATA_FOLDER", str(tmp_path), raising=False)
+    from src.workspaces import WorkspaceManager, DEFAULT_WORKSPACE_ID
+
+    wm = WorkspaceManager(str(tmp_path))
+    monkeypatch.setattr(app_module, "workspace_manager", wm)
     app_module.app.config["TESTING"] = True
-    return app_module.app.test_client(), tmp_path
+    files_dir = wm.files_dir(DEFAULT_WORKSPACE_ID)
+    return app_module.app.test_client(), files_dir
 
 
 def _write(path, content):
