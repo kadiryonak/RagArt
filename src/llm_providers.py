@@ -15,9 +15,10 @@ and the provider translates.
 
 from __future__ import annotations
 
+import json
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterator, Optional
 
 import requests
 
@@ -45,6 +46,16 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     def generate_general(self, question: str, **params: Any) -> str:
         """Generate a response without RAG context."""
+
+    def generate_stream(self, prompt: str, **params: Any) -> Iterator[str]:
+        """Yield the response incrementally, chunk by chunk.
+
+        Default implementation: a single chunk holding the full answer —
+        providers with real token streaming (e.g. Groq) override this.
+        Callers can always iterate generate_stream() regardless of whether
+        the concrete provider streams natively.
+        """
+        yield self.generate(prompt, **params)
 
 
 class DeepSeekProvider(BaseLLMProvider):
@@ -207,6 +218,54 @@ class GroqProvider(BaseLLMProvider):
                 logger.error(f"{StatusEmoji.ERROR} Groq error: {e}")
                 return f"Groq connection error: {e}"
         return "Groq API error: rate limit (after retry)"
+
+    def generate_stream(self, prompt: str, **params: Any) -> Iterator[str]:
+        """Stream the answer token-by-token via Groq's SSE chat completions.
+
+        On any non-200 (e.g. a 429 rate limit) we fall back to the regular
+        generate() — it owns the retry logic — and yield its result as a
+        single chunk, so the caller's streaming loop still works.
+        """
+        cfg = _merge(self.defaults, params)
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": params.get("model", self.model),
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": cfg["temperature"],
+            "max_tokens": cfg["max_tokens"],
+            "top_p": cfg["top_p"],
+            "stream": True,
+        }
+        try:
+            r = requests.post(
+                self.API_URL, headers=headers, json=payload,
+                timeout=self.timeout, stream=True,
+            )
+            if r.status_code != 200:
+                logger.warning(
+                    f"{StatusEmoji.WARNING} Groq stream {r.status_code} — "
+                    "falling back to non-streamed generate()"
+                )
+                yield self.generate(prompt, **params)
+                return
+            for line in r.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    break
+                try:
+                    delta = json.loads(data)["choices"][0]["delta"].get("content")
+                except (ValueError, KeyError, IndexError):
+                    continue
+                if delta:
+                    yield delta
+        except Exception as e:
+            logger.error(f"{StatusEmoji.ERROR} Groq stream error: {e}")
+            yield f"Groq connection error: {e}"
 
     def generate_general(self, question: str, **params: Any) -> str:
         general_prompt = (
