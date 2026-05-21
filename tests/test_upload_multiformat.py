@@ -17,18 +17,19 @@ def client(tmp_path, monkeypatch):
     test must inspect the workspace path.
     """
     import app as app_module
-    monkeypatch.setattr(app_module.settings, "DATA_FOLDER", str(tmp_path), raising=False)
-    # Re-init workspace manager pointed at tmp_path so each test is isolated,
-    # and rebuild the RagRegistry against it (registry holds a manager ref).
-    from src.workspaces import WorkspaceManager, DEFAULT_WORKSPACE_ID
+    from src.api import runtime
     from src.services import RagRegistry
-    app_module.workspace_manager = WorkspaceManager(str(tmp_path))
-    app_module.rag_registry = RagRegistry(app_module.workspace_manager)
+    from src.workspaces import WorkspaceManager, DEFAULT_WORKSPACE_ID
+    # Point the runtime at a fresh tmp_path workspace manager so each test
+    # is isolated, and rebuild the RagRegistry against it.
+    wm = WorkspaceManager(str(tmp_path))
+    monkeypatch.setattr(runtime, "workspace_manager", wm)
+    monkeypatch.setattr(runtime, "rag_registry", RagRegistry(wm))
     app_module.app.config["TESTING"] = True
 
     # Tests assert "(tmp / 'name')"; expose the workspace files dir as that
     # location so they read the right place.
-    ws_files = app_module.workspace_manager.files_dir(DEFAULT_WORKSPACE_ID)
+    ws_files = wm.files_dir(DEFAULT_WORKSPACE_ID)
     return app_module.app.test_client(), ws_files
 
 

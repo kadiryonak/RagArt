@@ -320,9 +320,10 @@ def api_client(monkeypatch):
     fake_rag = MagicMock()
     fake_rag.ask.side_effect = stub_ask
     fake_rag.model_type = "stub"
-    monkeypatch.setattr(app_module, "get_rag_for", lambda _: fake_rag)
-    monkeypatch.setattr(app_module.rag_registry, "cached", lambda _ws: fake_rag)
-    monkeypatch.setattr(app_module, "system_ready", True)
+    from src.api import runtime
+    monkeypatch.setattr(runtime, "get_rag_for", lambda _: fake_rag)
+    monkeypatch.setattr(runtime.rag_registry, "cached", lambda _ws: fake_rag)
+    monkeypatch.setattr(runtime.system, "ready", True)
     app_module.app.config["TESTING"] = True
     return app_module.app.test_client(), captured
 

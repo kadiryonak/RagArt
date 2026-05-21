@@ -19,10 +19,11 @@ def client(tmp_path, monkeypatch):
     and hand the test the default workspace's files dir to write into.
     """
     import app as app_module
+    from src.api import runtime
     from src.workspaces import WorkspaceManager, DEFAULT_WORKSPACE_ID
 
     wm = WorkspaceManager(str(tmp_path))
-    monkeypatch.setattr(app_module, "workspace_manager", wm)
+    monkeypatch.setattr(runtime, "workspace_manager", wm)
     app_module.app.config["TESTING"] = True
     files_dir = wm.files_dir(DEFAULT_WORKSPACE_ID)
     return app_module.app.test_client(), files_dir

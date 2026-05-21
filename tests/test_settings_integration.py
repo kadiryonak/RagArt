@@ -62,12 +62,14 @@ def client(monkeypatch):
     # Stub the RAG registry so no real RAG is built (which would load the
     # embedding model on every test): /ask etc. go through get_rag_for,
     # while /status and /health read rag_registry.cached().
+    from src.api import runtime
+
     def get_rag_stub(_ws_id):
         return fake_rag
 
-    monkeypatch.setattr(app_module, "get_rag_for", get_rag_stub)
-    monkeypatch.setattr(app_module.rag_registry, "cached", lambda _ws: fake_rag)
-    monkeypatch.setattr(app_module, "system_ready", True)
+    monkeypatch.setattr(runtime, "get_rag_for", get_rag_stub)
+    monkeypatch.setattr(runtime.rag_registry, "cached", lambda _ws: fake_rag)
+    monkeypatch.setattr(runtime.system, "ready", True)
 
     app_module.app.config["TESTING"] = True
     return app_module.app.test_client(), captured, fake_rag
