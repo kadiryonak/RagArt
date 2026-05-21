@@ -19,8 +19,8 @@ from rank_bm25 import BM25Okapi
 
 from src.retrievers.base import BaseRetriever, RetrievedDoc
 
-# L3 ile aynı tokenizer (Türkçe hafif stemming)
-from tests.evaluation.layers.l3_lexical import tokenize as _tokenize
+# Shared Turkish tokenizer — the L3 lexical evaluator uses the same one.
+from src.text_utils import tokenize as _tokenize
 
 
 class BM25Retriever(BaseRetriever):

@@ -1,0 +1,23 @@
+# Keep the build context (and image) small + secret-free.
+.git
+.gitignore
+.github/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Runtime data — mounted as a volume, never baked into the image.
+data/
+chroma_db/
+
+# Secrets — must never enter the image.
+.env
+
+# Not needed at runtime.
+tests/
+docs/
+*.md
+!README.md

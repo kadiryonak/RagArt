@@ -27,8 +27,11 @@ from __future__ import annotations
 import contextvars
 import logging
 import sys
+import threading
+import time
 import uuid
-from typing import Any, Optional
+from collections import deque
+from typing import Any, Dict, Optional
 
 
 # Tüm modüller bu context var üzerinden okur/yazar.
@@ -101,6 +104,89 @@ def install_logging(
         logging.getLogger(noisy).setLevel(max(level, logging.WARNING))
 
 
+# ─── Metrics ───────────────────────────────────────────────────────────
+
+
+class Metrics:
+    """Process-wide HTTP request metrics — thread-safe, in-memory.
+
+    Deliberately dependency-free (no Prometheus client): a showcase repo
+    should run with `pip install -r requirements.txt` and nothing else.
+    /metrics serves a JSON snapshot — counts, latency percentiles, uptime.
+
+    Latency samples are kept in a bounded deque so memory stays flat under
+    long-running load; percentiles are computed over that recent window.
+    """
+
+    _MAX_SAMPLES = 2000
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._started = time.time()
+        self._total = 0
+        self._by_status: Dict[str, int] = {}     # "2xx" → n
+        self._by_endpoint: Dict[str, int] = {}   # route rule → n
+        self._errors_5xx = 0
+        self._latencies: deque = deque(maxlen=self._MAX_SAMPLES)
+
+    def record(self, endpoint: str, status_code: int, latency_s: float) -> None:
+        """Tek bir tamamlanmış HTTP isteğini kaydet."""
+        bucket = f"{status_code // 100}xx"
+        with self._lock:
+            self._total += 1
+            self._by_status[bucket] = self._by_status.get(bucket, 0) + 1
+            if endpoint:
+                self._by_endpoint[endpoint] = self._by_endpoint.get(endpoint, 0) + 1
+            if status_code >= 500:
+                self._errors_5xx += 1
+            self._latencies.append(latency_s)
+
+    def reset(self) -> None:
+        """Sayaçları sıfırla — testler + manuel debug için."""
+        with self._lock:
+            self._started = time.time()
+            self._total = 0
+            self._by_status.clear()
+            self._by_endpoint.clear()
+            self._errors_5xx = 0
+            self._latencies.clear()
+
+    def snapshot(self) -> Dict[str, Any]:
+        """/metrics için JSON-serializable anlık görüntü."""
+        with self._lock:
+            lat = sorted(self._latencies)
+            total, errors = self._total, self._errors_5xx
+            by_status = dict(self._by_status)
+            by_endpoint = dict(self._by_endpoint)
+            uptime = time.time() - self._started
+
+        def pct(p: float) -> float:
+            if not lat:
+                return 0.0
+            idx = min(len(lat) - 1, int(round(p / 100 * (len(lat) - 1))))
+            return round(lat[idx], 4)
+
+        return {
+            "uptime_seconds": round(uptime, 1),
+            "requests_total": total,
+            "requests_by_status": by_status,
+            "requests_by_endpoint": by_endpoint,
+            "errors_5xx": errors,
+            "latency_seconds": {
+                "samples": len(lat),
+                "avg": round(sum(lat) / len(lat), 4) if lat else 0.0,
+                "p50": pct(50),
+                "p95": pct(95),
+                "p99": pct(99),
+                "max": round(lat[-1], 4) if lat else 0.0,
+            },
+        }
+
+
+# Process-wide singleton — install_flask_middleware feeds it, /metrics reads it.
+metrics = Metrics()
+
+
 # ─── Flask middleware ──────────────────────────────────────────────────
 
 
@@ -117,7 +203,7 @@ def install_flask_middleware(app: Any) -> None:
     Flask import'unu modül seviyesinde yapmamak için runtime'da import
     ediyoruz (observability modülü Flask'sız da kullanılabilsin diye).
     """
-    from flask import request
+    from flask import g, request
 
     @app.before_request
     def _assign_request_id():
@@ -125,8 +211,16 @@ def install_flask_middleware(app: Any) -> None:
         # Cap length to avoid huge IDs in logs
         rid = rid[:32] or new_request_id()
         set_request_id(rid)
+        # Start the latency timer for the metrics collector.
+        g._ragart_t0 = time.perf_counter()
 
     @app.after_request
     def _propagate_request_id(response):
         response.headers["X-Request-ID"] = get_request_id()
+        # Record request metrics. Use the matched route rule (e.g.
+        # /workspaces/<ws_id>) not the raw path, to keep cardinality low.
+        t0 = g.pop("_ragart_t0", None)
+        if t0 is not None:
+            endpoint = request.url_rule.rule if request.url_rule else "(unmatched)"
+            metrics.record(endpoint, response.status_code, time.perf_counter() - t0)
         return response

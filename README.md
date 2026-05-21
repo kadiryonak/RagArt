@@ -5,6 +5,7 @@
   <img src="https://img.shields.io/badge/ChromaDB-Vector_Store-FF6F00?style=for-the-badge" alt="ChromaDB"/>
   <img src="https://img.shields.io/badge/HuggingFace-Embeddings-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="HuggingFace"/>
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License"/>
+  <img src="https://img.shields.io/github/actions/workflow/status/kadiryonak/RagArt/ci.yml?style=for-the-badge&label=CI" alt="CI"/>
 </p>
 
 # 🤖 RagArt — Production-Grade Turkish RAG System
@@ -377,42 +378,45 @@ RagArt/
 
 ## 🚀 Quick Start
 
-### 1. Clone & Install
+### Option A — the `ragart` command (recommended)
 
 ```bash
 git clone https://github.com/kadiryonak/RagArt.git
 cd RagArt
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# Linux/macOS
-source venv/bin/activate
-pip install -r requirements.txt
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -e .
+ragart
 ```
 
-### 2. Configure (Optional)
+`ragart` starts the server and opens **http://localhost:5000**.
+Flags: `ragart --port 8080`, `ragart --no-browser`, `ragart --debug`.
+
+### Option B — Docker (no Python install)
+
+```bash
+docker compose up
+```
+
+→ **http://localhost:5000**
+
+### Configure the LLM (optional)
+
+RagArt runs out of the box on a local model. For best quality use **Groq**
+(free tier) — either paste your key into the in-app **Settings** (BYOK; the
+key stays in your browser, never on the server) or set it server-side:
 
 ```bash
 cp .env.example .env
-# Edit .env with your API key
 ```
 
 ```env
-# Use Groq free tier (recommended for testing)
+# Server-side LLM — or skip this and use the in-app BYOK settings.
 MODEL_TYPE=groq
 GROQ_API_KEY=your_groq_api_key_here
 
-# Or run fully local (no API key needed)
-MODEL_TYPE=local
+# Or run fully local, no API key:
+# MODEL_TYPE=local
 ```
-
-### 3. Run
-
-```bash
-python app.py
-```
-
-Open **http://localhost:5000** in your browser.
 
 ---
 
@@ -441,18 +445,24 @@ Open **http://localhost:5000** in your browser.
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Web UI (single-page application) |
-| `/ask` | POST | Ask a question (supports BYOK headers) |
+| `/ask` | POST | Ask a question, blocking (supports BYOK headers) |
+| `/ask/stream` | POST | Ask a question, **streaming** — Server-Sent Events |
 | `/status` | GET | System initialization status |
-| `/health` | GET | Health check |
+| `/health` | GET | Health check (uptime, request count) |
+| `/metrics` | GET | Request counts, latency percentiles, errors |
 | `/stats` | GET | System statistics |
 | `/test` | GET | Run built-in test questions |
 | `/data-info` | GET | Knowledge base information |
 | `/upload` | POST | Upload document (JSON/PDF/DOCX/MD/TXT) |
 | `/delete-file` | POST | Delete a document |
-| `/reindex` | POST | Rebuild vector store |
+| `/reindex` | POST | Sync vector store — incremental, or `{"full":true}` |
 | `/list-files` | GET | List all knowledge base files |
 | `/settings/schema` | GET | Frontend settings schema (BYOK metadata) |
 | `/source/<filename>` | GET | Serve raw source file (PDF viewer, etc.) |
+| `/workspaces` | GET/POST | List / create workspaces |
+| `/workspaces/<id>` | PATCH/DELETE | Update / delete a workspace |
+| `/cache/stats` | GET | Cache hit/miss statistics |
+| `/cache/clear` | POST | Clear one or all cache layers |
 
 ---
 
@@ -470,7 +480,7 @@ Open **http://localhost:5000** in your browser.
 | **Document Parsing** | pypdf, python-docx |
 | **Tokenization** | tiktoken (budget estimation) |
 | **ML Framework** | PyTorch + Transformers |
-| **Testing** | pytest + pytest-cov (174 tests) |
+| **Testing** | pytest + pytest-cov (605 tests) |
 | **Evaluation** | Custom 4-layer harness (L1-L4) |
 | **Frontend** | Vanilla HTML/CSS/JS (dark theme SPA) |
 

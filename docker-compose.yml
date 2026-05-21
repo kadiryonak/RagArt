@@ -1,0 +1,20 @@
+# RagArt — `docker compose up`  →  http://localhost:5000
+services:
+  ragart:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Workspaces, uploaded files and vector DBs persist across restarts.
+      - ./data:/app/data
+      # The embedding model is downloaded once into this named volume.
+      - hf-cache:/root/.cache/huggingface
+    environment:
+      - HOST=0.0.0.0
+      # Optional server-side LLM. Leave unset to use the in-app BYOK
+      # settings (paste a key in the UI) or the local model.
+      # - MODEL_TYPE=groq
+      # - GROQ_API_KEY=your-key-here
+
+volumes:
+  hf-cache:

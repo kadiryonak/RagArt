@@ -178,14 +178,15 @@ class TestWorkspaceRoundtrip:
 def api_client(tmp_path, monkeypatch):
     """Flask test client with a fresh tmp DATA_FOLDER."""
     import app as app_module
-    monkeypatch.setattr(app_module.settings, "DATA_FOLDER", str(tmp_path), raising=False)
-    # Re-init the workspace manager pointing at tmp_path so tests are isolated,
-    # and rebuild the RagRegistry against it (registry holds a manager ref).
-    from src.workspaces import WorkspaceManager
+    from src.api import runtime
     from src.services import RagRegistry
-    app_module.workspace_manager = WorkspaceManager(str(tmp_path))
-    app_module.rag_registry = RagRegistry(app_module.workspace_manager)
-    app_module.system_ready = True
+    from src.workspaces import WorkspaceManager
+    # Point the runtime at a fresh tmp_path workspace manager so tests are
+    # isolated, and rebuild the RagRegistry against it.
+    wm = WorkspaceManager(str(tmp_path))
+    monkeypatch.setattr(runtime, "workspace_manager", wm)
+    monkeypatch.setattr(runtime, "rag_registry", RagRegistry(wm))
+    monkeypatch.setattr(runtime.system, "ready", True)
     app_module.app.config["TESTING"] = True
     return app_module.app.test_client()
 

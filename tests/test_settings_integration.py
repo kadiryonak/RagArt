@@ -62,12 +62,14 @@ def client(monkeypatch):
     # Stub the RAG registry so no real RAG is built (which would load the
     # embedding model on every test): /ask etc. go through get_rag_for,
     # while /status and /health read rag_registry.cached().
+    from src.api import runtime
+
     def get_rag_stub(_ws_id):
         return fake_rag
 
-    monkeypatch.setattr(app_module, "get_rag_for", get_rag_stub)
-    monkeypatch.setattr(app_module.rag_registry, "cached", lambda _ws: fake_rag)
-    monkeypatch.setattr(app_module, "system_ready", True)
+    monkeypatch.setattr(runtime, "get_rag_for", get_rag_stub)
+    monkeypatch.setattr(runtime.rag_registry, "cached", lambda _ws: fake_rag)
+    monkeypatch.setattr(runtime.system, "ready", True)
 
     app_module.app.config["TESTING"] = True
     return app_module.app.test_client(), captured, fake_rag
@@ -374,3 +376,53 @@ class TestAskWithBYOK:
         assert isinstance(prov, OllamaProvider)
         assert prov.model == "llama3.1:8b"
         assert captured["llm_params"]["num_ctx"] == 4096
+
+
+class TestAskStream:
+    """SSE wiring for POST /ask/stream — rag.ask_stream() events → frames."""
+
+    def test_emits_sse_events_in_order(self, client):
+        c, _, fake_rag = client
+
+        def fake_stream(question, **kw):
+            yield {"type": "sources", "sources": []}
+            yield {"type": "token", "text": "Mer"}
+            yield {"type": "token", "text": "haba"}
+            yield {"type": "done", "answer": "Merhaba", "source_type": "rag_system"}
+
+        fake_rag.ask_stream = fake_stream
+        r = c.post("/ask/stream", json={"question": "selam"})
+        assert r.status_code == 200
+        assert r.mimetype == "text/event-stream"
+
+        body = r.get_data(as_text=True)
+        events = [
+            json.loads(line[6:])
+            for line in body.splitlines()
+            if line.startswith("data: ")
+        ]
+        assert [e["type"] for e in events] == ["sources", "token", "token", "done"]
+        streamed = "".join(e["text"] for e in events if e["type"] == "token")
+        assert streamed == "Merhaba"
+
+    def test_empty_question_rejected(self, client):
+        c, _, _ = client
+        r = c.post("/ask/stream", json={"question": "   "})
+        assert r.status_code == 400
+
+    def test_error_mid_stream_becomes_error_event(self, client):
+        c, _, fake_rag = client
+
+        def boom(question, **kw):
+            yield {"type": "sources", "sources": []}
+            raise RuntimeError("kapat")
+
+        fake_rag.ask_stream = boom
+        r = c.post("/ask/stream", json={"question": "x"})
+        assert r.status_code == 200
+        events = [
+            json.loads(line[6:])
+            for line in r.get_data(as_text=True).splitlines()
+            if line.startswith("data: ")
+        ]
+        assert events[-1]["type"] == "error"

@@ -746,24 +746,16 @@ class TurkishRAGSystem:
                 "source": "error",
             }
 
-        from src.pipeline import QueryRequest
-        request = QueryRequest(
-            question=question,
-            k=k,
-            llm_provider=llm_provider,
-            llm_params=dict(llm_params or {}),
-            retrieval_strategy=retrieval_strategy,
-            rerank=rerank,
-            rerank_fetch_k=rerank_fetch_k,
-            selected_files=tuple(selected_files or ()),
-            history=tuple(history or ()),
-            memory_strategy=memory_strategy,
+        request = self._build_query_request(
+            question, k=k, llm_provider=llm_provider, llm_params=llm_params,
+            retrieval_strategy=retrieval_strategy, rerank=rerank,
+            rerank_fetch_k=rerank_fetch_k, selected_files=selected_files,
+            history=history, memory_strategy=memory_strategy,
             deduplicate_context=deduplicate_context,
             reorder_context=reorder_context,
             max_context_tokens=max_context_tokens,
             allow_general_knowledge_fallback=allow_general_knowledge_fallback,
-            prompt_strategy=prompt_strategy,
-            custom_role=custom_role,
+            prompt_strategy=prompt_strategy, custom_role=custom_role,
             custom_prompt_template=custom_prompt_template,
             use_response_cache=use_response_cache,
             use_semantic_cache=use_semantic_cache,
@@ -799,6 +791,161 @@ class TurkishRAGSystem:
                 "context_used": "",
                 "source": "error",
             }
+
+    def _build_query_request(self, question: str, **kw):
+        """Build the frozen QueryRequest shared by ask() and ask_stream()."""
+        from src.pipeline import QueryRequest
+        return QueryRequest(
+            question=question,
+            k=kw.get("k", 5),
+            llm_provider=kw.get("llm_provider"),
+            llm_params=dict(kw.get("llm_params") or {}),
+            retrieval_strategy=kw.get("retrieval_strategy"),
+            rerank=kw.get("rerank", False),
+            rerank_fetch_k=kw.get("rerank_fetch_k", 20),
+            selected_files=tuple(kw.get("selected_files") or ()),
+            history=tuple(kw.get("history") or ()),
+            memory_strategy=kw.get("memory_strategy"),
+            deduplicate_context=kw.get("deduplicate_context", False),
+            reorder_context=kw.get("reorder_context", False),
+            max_context_tokens=kw.get("max_context_tokens"),
+            allow_general_knowledge_fallback=kw.get(
+                "allow_general_knowledge_fallback", False
+            ),
+            prompt_strategy=kw.get("prompt_strategy"),
+            custom_role=kw.get("custom_role"),
+            custom_prompt_template=kw.get("custom_prompt_template"),
+            use_response_cache=kw.get("use_response_cache", True),
+            use_semantic_cache=kw.get("use_semantic_cache", False),
+            semantic_cache_threshold=kw.get("semantic_cache_threshold", 0.92),
+        )
+
+    @staticmethod
+    def _stream_sources(docs: List[Document]) -> List[Dict[str, Any]]:
+        """Convert retrieved Documents to the source shape the UI expects."""
+        out = []
+        for d in docs:
+            content = d.page_content
+            out.append({
+                "title": d.metadata.get("source", "Unknown"),
+                "content": content[:300] + "..." if len(content) > 300 else content,
+                "metadata": d.metadata,
+            })
+        return out
+
+    @staticmethod
+    def _stream_done_payload(resp: Dict[str, Any], state) -> Dict[str, Any]:
+        """Final-event metadata for ask_stream — groundedness, cache, timings."""
+        return {
+            "answer": resp.get("answer", state.answer or ""),
+            "source_type": resp.get("source", "rag_system"),
+            "relevance_score": resp.get("relevance_score", 0.0),
+            "groundedness": resp.get("groundedness_score"),
+            "prompt_strategy": resp.get("prompt_strategy"),
+            "query_complexity": resp.get("query_complexity"),
+            "cache_hit": bool(resp.get("cache_hit")),
+            "timings": dict(state.timings),
+        }
+
+    def ask_stream(self, question: str, **kwargs):
+        """Streaming variant of ask() — a generator yielding event dicts.
+
+        Events (each JSON-serialisable):
+            {"type": "sources", "sources": [...]}   once, before any token
+            {"type": "token",   "text": "..."}      repeated
+            {"type": "done",    ...}                 once, final metadata
+            {"type": "error",   "error": "..."}      on failure
+
+        Single-call strategies stream token-by-token. Cache hits, greetings,
+        low-relevance fallbacks and multi-call strategies can't stream
+        incrementally — they emit the whole answer as one token event.
+
+        Reuses the exact pipeline stages: the pre-LLM stages run as usual,
+        the LLM call is replaced by a streaming generate, then the
+        post-response stages (response/groundedness/cache) run as usual.
+        """
+        if not self.vector_store:
+            yield {"type": "error", "error": "Vektör tabanı başlatılmadı."}
+            return
+
+        from src.pipeline import QueryState
+        from src.pipeline.stages import (
+            GuardStage, ClassifyStage, CacheLookupStage, RetrievalStage,
+            RelevanceGateStage, ContextStage, MemoryStage, ExecuteStage,
+            ResponseStage, GroundednessStage, CacheWriteStage,
+        )
+
+        request = self._build_query_request(question, **kwargs)
+        state = QueryState(request=request, rag=self)
+        post_stages = [ResponseStage(), GroundednessStage(), CacheWriteStage()]
+
+        # Run everything up to (but not including) the LLM call.
+        try:
+            for stage in (GuardStage(), ClassifyStage(), CacheLookupStage(),
+                          RetrievalStage(), RelevanceGateStage(),
+                          ContextStage(), MemoryStage()):
+                state = stage(state)
+                if state.response is not None:
+                    break
+        except RuntimeError as e:
+            msg = (
+                "Vektör tabanı eski bir koleksiyona referans veriyor. "
+                "Lütfen 'Bilgi Tabanını Yeniden İndeksle' butonuna basın."
+                if str(e) == "STALE_INDEX" else str(e)
+            )
+            yield {"type": "error", "error": msg}
+            return
+        except Exception as e:
+            logger.error(f"{StatusEmoji.ERROR} ask_stream error: {e}")
+            yield {"type": "error", "error": str(e)}
+            return
+
+        # Short-circuit: cache hit / greeting / low-relevance fallback already
+        # produced a full answer — emit it whole (no token-by-token).
+        if state.response is not None:
+            resp = state.response
+            yield {"type": "sources", "sources": resp.get("source_documents", [])}
+            yield {"type": "token", "text": resp.get("answer", "")}
+            yield {"type": "done", **self._stream_done_payload(resp, state)}
+            return
+
+        strategy = state.strategy
+        yield {"type": "sources", "sources": self._stream_sources(state.docs)}
+
+        if getattr(strategy, "is_multi_call", False):
+            # Multi-call strategies (self-refine, multi-query) need several
+            # LLM calls — run them non-streamed, emit the whole answer.
+            state = ExecuteStage()(state)
+            yield {"type": "token", "text": state.answer or ""}
+        else:
+            # Single-call → real token streaming.
+            provider = request.llm_provider or self.llm_provider
+            prompt = strategy.build_prompt(
+                question=question, context=state.context,
+                memory_context=state.memory_context,
+            )
+            logger.info(
+                "Streaming (%s) via strategy=%s",
+                getattr(provider, "model", self.model_type), strategy.name,
+            )
+            parts = []
+            try:
+                for chunk in provider.generate_stream(
+                    prompt, **dict(request.llm_params)
+                ):
+                    if chunk:
+                        parts.append(chunk)
+                        yield {"type": "token", "text": chunk}
+            except Exception as e:
+                logger.error(f"{StatusEmoji.ERROR} Stream generation error: {e}")
+                yield {"type": "error", "error": str(e)}
+                return
+            state.answer = "".join(parts)
+
+        # Post-response stages: build the dict, score groundedness, cache.
+        for stage in post_stages:
+            state = stage(state)
+        yield {"type": "done", **self._stream_done_payload(state.response or {}, state)}
 
     def _fallback_response(
         self,

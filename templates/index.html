@@ -279,6 +279,11 @@ a:hover{text-decoration:underline}
 .copy-btn:hover{color:var(--accent);border-color:var(--accent-line)}
 .copy-btn svg{width:15px;height:15px}
 .answer-body{font-size:14.5px;line-height:1.62}
+.answer-body.streaming{white-space:pre-wrap;word-break:break-word}
+.stream-caret{display:inline-block;width:7px;height:1.05em;vertical-align:text-bottom;
+  background:var(--accent);margin-left:1px;border-radius:1px;
+  animation:streamBlink 1s steps(2,start) infinite}
+@keyframes streamBlink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
 .answer-body p{margin:0 0 10px}
 .answer-body h3{font-size:15px;margin:16px 0 7px}
 .answer-body h4{font-size:13.5px;margin:13px 0 6px}
@@ -1577,6 +1582,34 @@ const API = {
   async ask(question,signal){
     const d=await this.req('POST','/ask',{question},signal);
     return normalizeAskResponse(d);
+  },
+  async askStream(question,{onEvent,signal}){
+    // POST /ask/stream → Server-Sent Events. Reads `data: {json}` frames
+    // off the response body and hands each parsed event to onEvent().
+    const res=await fetch('/ask/stream',{
+      method:'POST',headers:buildHeaders(),
+      body:JSON.stringify({question}),signal,
+    });
+    if(!res.ok||!res.body){
+      let d={}; try{ d=await res.json(); }catch(e){}
+      throw new Error(d.error||('HTTP '+res.status));
+    }
+    const reader=res.body.getReader(), dec=new TextDecoder();
+    let buf='';
+    while(true){
+      const {done,value}=await reader.read();
+      if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      let i;
+      while((i=buf.indexOf('\n\n'))>=0){
+        const frame=buf.slice(0,i); buf=buf.slice(i+2);
+        const line=frame.split('\n').find(l=>l.indexOf('data: ')===0);
+        if(!line) continue;
+        let ev;
+        try{ ev=JSON.parse(line.slice(6)); }catch(e){ continue; }
+        onEvent(ev);  // may throw (e.g. on an error event) — propagates out
+      }
+    }
   }
 };
 function delay(ms,signal){
@@ -1880,23 +1913,54 @@ async function doAsk(){
   $('#suggestWrap').classList.add('hide');
   $('#copyBtn').classList.add('hide');
   const area=$('#answerArea');
-  area.innerHTML='<div class="answer-skel">'+
-    '<div class="skel line"></div><div class="skel line"></div><div class="skel line"></div><div class="skel line"></div></div>'+
+  // Live streaming: a plain-text body grows token-by-token; on `done` it is
+  // re-rendered as markdown by paintAnswer().
+  area.innerHTML=
+    '<div class="answer-body streaming" id="streamBody"><span class="stream-caret"></span></div>'+
     '<div class="sources-label">Kaynak Belgeler</div>'+
     '<div class="sources-list" id="sourcesList"><div class="answer-empty">Kaynaklar yükleniyor...</div></div>';
+  let answer='', sources=[], finished=false;
   try{
-    const res=await API.ask(q,ctrl.signal);
+    await API.askStream(q,{
+      signal:ctrl.signal,
+      onEvent:(ev)=>{
+        if(ev.type==='sources'){
+          sources=normalizeAskResponse({sources:ev.sources||[]}).sources||[];
+          const sl=$('#sourcesList');
+          if(sl) sl.innerHTML=renderSourcesList(sources);
+        } else if(ev.type==='token'){
+          answer+=ev.text||'';
+          const sb=$('#streamBody');
+          if(sb) sb.innerHTML=escapeHtml(answer)+'<span class="stream-caret"></span>';
+        } else if(ev.type==='done'){
+          finished=true;
+          const res={
+            answer:ev.answer||answer,
+            sources:sources,
+            timings:{
+              groundedness:ev.groundedness,
+              strategy:ev.prompt_strategy,
+              cache:ev.cache_hit?'hit':'miss',
+              query_complexity:ev.query_complexity,
+            },
+          };
+          state.lastAnswer=res;
+          state.conversationHistory.push({role:'user',content:q});
+          state.conversationHistory.push({role:'assistant',content:res.answer});
+          paintAnswer(res);
+          const g=ev.groundedness;
+          if(typeof g==='number'&&g<0.5) toast('warning','Düşük groundedness','Skor '+g.toFixed(2)+' — yanıt kaynaklarla zayıf destekleniyor.');
+          if(ev.cache_hit) toast('info','Cache hit','Yanıt önbellekten döndü.');
+        } else if(ev.type==='error'){
+          throw new Error(ev.error||'Yanıt alınamadı.');
+        }
+      },
+    });
     if(ctrl.signal.aborted) return;
-    state.lastAnswer=res;
-    state.conversationHistory.push({role:'user',content:q});
-    state.conversationHistory.push({role:'assistant',content:res.answer});
-    paintAnswer(res);
-    const g=res.timings&&res.timings.groundedness;
-    if(typeof g==='number'&&g<0.5) toast('warning','Düşük groundedness','Skor '+g.toFixed(2)+' — yanıt kaynaklarla zayıf destekleniyor.');
-    if(res.timings&&res.timings.cache==='hit') toast('info','Cache hit','Yanıt önbellekten döndü.');
+    if(!finished) throw new Error('Yanıt yarıda kesildi.');
   }catch(e){
     if(e.name==='AbortError'){ return; }
-    area.innerHTML='<div class="answer-empty">'+ICON.alert+'<div>Yanıt alınamadı.</div></div>'+
+    area.innerHTML='<div class="answer-empty">'+ICON.alert+'<div>'+escapeHtml(e.message||'Yanıt alınamadı.')+'</div></div>'+
       '<div class="sources-label">Kaynak Belgeler</div>'+
       '<div class="sources-list" id="sourcesList"><div class="answer-empty">Kaynak bulunamadı.</div></div>';
     toast('error','İstek başarısız',e.message||'Bilinmeyen hata.');
