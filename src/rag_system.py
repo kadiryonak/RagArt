@@ -370,17 +370,6 @@ class TurkishRAGSystem:
             )
         return self._reranker_cache[cache_key]
 
-    @staticmethod
-    def _doc_in_sources(metadata: dict, allowed: set) -> bool:
-        """True if the document's source filename is in the allowed set.
-
-        Loaders set metadata['source'] = file.name, but we take the basename
-        defensively in case a full path slipped into source / file_path.
-        """
-        raw = metadata.get("source") or metadata.get("file_path") or ""
-        name = str(raw).replace("\\", "/").rsplit("/", 1)[-1]
-        return name in allowed
-
     def search(
         self,
         query: str,
@@ -409,19 +398,37 @@ class TurkishRAGSystem:
         Returns:
             List of relevant Document objects
         """
+        # ── Per-file selection ───────────────────────────────────────
+        # Use ChromaDB's native metadata filter so results are GUARANTEED
+        # to come from the selected files, no matter how large the rest of
+        # the knowledge base is. A post-filter over a global k-NN result
+        # set silently returns nothing when the chosen file's chunks aren't
+        # among the nearest neighbours of the whole store — exactly the
+        # "uploaded + indexed but can't find it" bug.
+        if allowed_sources:
+            if not self.vector_store:
+                return []
+            where = {"source": {"$in": sorted(allowed_sources)}}
+            try:
+                return self.vector_store.similarity_search(
+                    query, k=k, filter=where,
+                )
+            except Exception as e:
+                logger.error(
+                    f"{StatusEmoji.ERROR} Filtered search failed "
+                    f"({type(e).__name__}: {e}). Reindex may be required."
+                )
+                raise RuntimeError("STALE_INDEX") from e
+
         retriever = self._select_retriever(
             strategy, rerank=rerank, rerank_fetch_k=rerank_fetch_k,
         )
-        # When restricting to a subset of files, over-fetch so enough
-        # candidates survive the source filter before we truncate back to k.
-        fetch_k = k if not allowed_sources else max(k * 6, 48)
-
         if retriever is None:
             # Legacy fallback path — no context processors applied
             if not self.vector_store:
                 return []
             try:
-                docs = self.vector_store.similarity_search(query, k=fetch_k)
+                return self.vector_store.similarity_search(query, k=k)
             except Exception as e:
                 logger.error(
                     f"{StatusEmoji.ERROR} Stale vector_store ({type(e).__name__}: {e}). "
@@ -429,15 +436,9 @@ class TurkishRAGSystem:
                 )
                 # Tell ask() the index is gone by raising a recognisable error
                 raise RuntimeError("STALE_INDEX") from e
-            if allowed_sources:
-                docs = [
-                    d for d in docs
-                    if self._doc_in_sources(d.metadata, allowed_sources)
-                ]
-            return docs[:k]
 
         try:
-            retrieved = retriever.retrieve(query, k=fetch_k)
+            retrieved = retriever.retrieve(query, k=k)
         except Exception as e:
             err = str(e)
             # ChromaDB throws "Collection [UUID] does not exist" when the
@@ -453,14 +454,6 @@ class TurkishRAGSystem:
                 self._reranker_cache.clear()
                 raise RuntimeError("STALE_INDEX") from e
             raise
-
-        # Per-file selection: keep only the chosen sources, then truncate to k
-        # (we over-fetched above so the filter has room to work).
-        if allowed_sources:
-            retrieved = [
-                r for r in retrieved
-                if self._doc_in_sources(r.metadata, allowed_sources)
-            ][:k]
 
         # Apply context engineering processors (if configured) on the
         # RetrievedDoc layer so processors can see retrieval scores.
