@@ -2166,12 +2166,23 @@ async function doReindex(){
   showReindexBanner(cnt);
   ws.status='reindexing'; updateStatusBar();
   $('#reindexBtn').disabled=true;
-  await API.reindex();
+  const res=await API.reindex();
   ws.status='ready';
   hideReindexBanner();
   updateStatusBar();
   $('#reindexBtn').disabled=false;
-  toast('success','İndeksleme tamamlandı',cnt+' dosya yeniden indekslendi.');
+  // Incremental reindex: report what actually changed.
+  const sync=res&&res.sync;
+  let msg=cnt+' dosya indekslendi.';
+  if(sync&&String(sync.mode).indexOf('full')===0){
+    msg=cnt+' dosya tam yeniden indekslendi.';
+  }else if(sync){
+    const a=(sync.added||[]).length, r=(sync.removed||[]).length;
+    msg=(a||r)
+      ? (a?a+' yeni dosya eklendi':'')+((a&&r)?', ':'')+(r?r+' dosya kaldırıldı':'')+'.'
+      : 'Bilgi tabanı zaten güncel — değişiklik yok.';
+  }
+  toast('success','İndeksleme tamamlandı',msg);
 }
 function showReindexBanner(n){
   let b=$('#reindexBanner');

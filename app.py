@@ -494,17 +494,33 @@ def delete_file():
 
 @app.route("/reindex", methods=["POST"])
 def reindex_documents():
-    """Rebuild the vector store for the active workspace only."""
+    """Update the vector store for the active workspace.
+
+    Body JSON (optional):
+        {"full": true}  → full rebuild (re-embeds every file). Needed when
+                           a file was edited in place (same name).
+        {} or omitted   → incremental sync: only new files are embedded,
+                           removed files are dropped. Cheap as the KB grows.
+    """
     global system_ready, system_status
 
+    data = request.get_json(silent=True) or {}
+    full = bool(data.get("full"))
     ws_id = _current_workspace_id()
     try:
         system_status = f"Reindexing workspace '{ws_id}'..."
         system_ready = False
 
-        logger.info(f"{StatusEmoji.LOADING} Reindexing ws={ws_id}...")
+        logger.info(
+            f"{StatusEmoji.LOADING} Reindexing ws={ws_id} "
+            f"({'full' if full else 'incremental'})..."
+        )
         rag = get_rag_for(ws_id)
-        rag.create_vector_store()
+        if full:
+            rag.create_vector_store()
+            sync = {"mode": "full", "added": [], "removed": [], "added_chunks": 0}
+        else:
+            sync = rag.sync_index()
         workspace_manager.touch(ws_id)
 
         # Invalidate response & semantic caches — knowledge base changed,
@@ -521,6 +537,7 @@ def reindex_documents():
         return jsonify({
             "success": True,
             "message": "Knowledge base reindexed successfully.",
+            "sync": sync,
             "document_count": rag.document_loader.document_count,
             "workspace_id": ws_id,
         })

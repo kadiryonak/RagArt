@@ -260,7 +260,96 @@ class TurkishRAGSystem:
         self._build_retrievers(split_docs)
 
         logger.info(f"{StatusEmoji.SUCCESS} Vector store created successfully!")
-    
+
+    def sync_index(self) -> Dict[str, Any]:
+        """Incrementally sync the vector store with the files on disk.
+
+        Only files NEW to the index are embedded; files removed from disk
+        have their chunks deleted; unchanged files are left untouched so
+        their (expensive) embeddings are reused as-is. This keeps reindex
+        cheap as the knowledge base grows.
+
+        Change detection is by filename. Editing a file in place (same
+        name, new content) is NOT picked up — use create_vector_store()
+        for a full rebuild in that case.
+
+        Returns:
+            Summary dict: mode / added / removed / added_chunks.
+        """
+        # No existing collection yet → nothing to diff against, full build.
+        if self.vector_store is None:
+            self.create_vector_store()
+            return {"mode": "full", "added": [], "removed": [], "added_chunks": 0}
+
+        # 1. Which source files are already indexed?
+        try:
+            existing = self.vector_store.get(include=["metadatas"])
+        except Exception as e:
+            logger.warning(
+                f"{StatusEmoji.WARNING} Could not read existing index "
+                f"({type(e).__name__}: {e}) — falling back to full rebuild."
+            )
+            self.create_vector_store()
+            return {"mode": "full-rebuild", "added": [], "removed": [],
+                    "added_chunks": 0}
+
+        indexed = {
+            (m or {}).get("source") for m in (existing.get("metadatas") or [])
+        }
+        indexed.discard(None)
+
+        # 2. Which source files are on disk now?
+        documents = self.document_loader.load_all()
+        by_source: Dict[str, List[Document]] = {}
+        for d in documents:
+            by_source.setdefault(d.metadata.get("source"), []).append(d)
+        disk = set(by_source)
+        disk.discard(None)
+
+        to_add = disk - indexed
+        to_remove = indexed - disk
+
+        # 3. Drop chunks of files no longer on disk.
+        if to_remove:
+            stale = self.vector_store.get(
+                where={"source": {"$in": sorted(to_remove)}}
+            )
+            stale_ids = stale.get("ids") or []
+            if stale_ids:
+                self.vector_store.delete(ids=stale_ids)
+            logger.info(
+                f"{StatusEmoji.INFO} Reindex: removed {len(to_remove)} "
+                f"file(s) from the index"
+            )
+
+        # 4. Split everything once; embed + add only the NEW files' chunks.
+        all_chunks = (
+            self.embedding_manager.split_documents(documents) if documents else []
+        )
+        added_chunks = 0
+        if to_add:
+            new_chunks = [
+                c for c in all_chunks if c.metadata.get("source") in to_add
+            ]
+            if new_chunks:
+                self.vector_store.add_documents(new_chunks)
+                added_chunks = len(new_chunks)
+            logger.info(
+                f"{StatusEmoji.SUCCESS} Reindex: added {len(to_add)} new "
+                f"file(s), {added_chunks} chunks"
+            )
+
+        # 5. Rebuild the in-memory retrievers (BM25) over ALL current chunks —
+        #    cheap, pure tokenisation, no embedding.
+        self._build_retrievers(all_chunks)
+
+        return {
+            "mode": "incremental",
+            "added": sorted(to_add),
+            "removed": sorted(to_remove),
+            "added_chunks": added_chunks,
+        }
+
     def load_existing_vector_store(self) -> bool:
         """
         Try to load an existing vector store if available.
