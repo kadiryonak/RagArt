@@ -39,41 +39,14 @@ PURE PYTHON
 from __future__ import annotations
 
 import math
-import re
 from collections import Counter
 from typing import Any, Dict, List
 
 from tests.evaluation.dataset import GoldenItem
 from tests.evaluation.layers.base import BaseEvaluator, RAGOutput
 
-
-# Türkçe için sık görülen ek/sonek listesi — kaba ama etkili
-_TURKISH_SUFFIXES = (
-    "ları", "leri", "lar", "ler",
-    "ında", "inde", "unda", "ünde",
-    "dan", "den", "tan", "ten",
-    "nın", "nin", "nun", "nün", "ın", "in", "un", "ün",
-    "ya", "ye", "ka", "ke",
-    "dır", "dir", "dur", "dür", "tır", "tir", "tur", "tür",
-)
-
-
-def _light_stem(word: str) -> str:
-    """Türkçe için hafif suffix stripping. Mükemmel değil ama BLEU/ROUGE
-    skoruna olan haksız çekim cezasını azaltır."""
-    for suf in _TURKISH_SUFFIXES:
-        if len(word) > len(suf) + 2 and word.endswith(suf):
-            return word[: -len(suf)]
-    return word
-
-
-def tokenize(text: str, *, stem: bool = True) -> List[str]:
-    """Basit tokenizer: küçük harfe çevir, harf-rakam dışı karakterleri at."""
-    text = text.lower()
-    tokens = re.findall(r"[a-zçğıöşü0-9]+", text)
-    if stem:
-        tokens = [_light_stem(t) for t in tokens]
-    return tokens
+# Turkish tokenizer now lives in src/ (production code — BM25 uses it too).
+from src.text_utils import tokenize
 
 
 def _ngrams(tokens: List[str], n: int) -> Counter:
