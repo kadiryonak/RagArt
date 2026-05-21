@@ -152,6 +152,7 @@ class RequestSettings:
     prompt_strategy: Optional[str] = None      # 'direct' | 'cot' | 'few_shot' | ...
     custom_role: Optional[str] = None          # for role_based strategy
     custom_prompt_template: Optional[str] = None  # for custom strategy
+    selected_files: list = field(default_factory=list)  # [] = all files
 
 
 def parse_request_settings(headers) -> RequestSettings:
@@ -238,6 +239,18 @@ def parse_request_settings(headers) -> RequestSettings:
     custom_role = _decode_header_b64("X-Custom-Role")
     custom_template = _decode_header_b64("X-Custom-Prompt")
 
+    # Per-file selection: client sends a base64 JSON list of filenames.
+    # Absent / empty → retrieve from the whole knowledge base.
+    selected_files: list = []
+    sel_raw = _decode_header_b64("X-Selected-Files")
+    if sel_raw:
+        try:
+            data = json.loads(sel_raw)
+            if isinstance(data, list):
+                selected_files = [str(x) for x in data][:500]
+        except (ValueError, TypeError):
+            selected_files = []
+
     max_ctx_tokens: Optional[int] = None
     raw_budget = headers.get("X-Context-Max-Tokens")
     if raw_budget:
@@ -263,6 +276,7 @@ def parse_request_settings(headers) -> RequestSettings:
         prompt_strategy=prompt_strategy,
         custom_role=custom_role,
         custom_prompt_template=custom_template,
+        selected_files=selected_files,
     )
 
 

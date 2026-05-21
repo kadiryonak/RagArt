@@ -9,7 +9,10 @@ from unittest.mock import Mock, patch
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from langchain.schema import Document
+try:
+    from langchain_core.documents import Document
+except ImportError:  # older langchain
+    from langchain.schema import Document
 
 
 class TestEmbeddingManager:

@@ -18,10 +18,12 @@ def client(tmp_path, monkeypatch):
     """
     import app as app_module
     monkeypatch.setattr(app_module.settings, "DATA_FOLDER", str(tmp_path), raising=False)
-    # Re-init workspace manager pointed at tmp_path so each test is isolated
+    # Re-init workspace manager pointed at tmp_path so each test is isolated,
+    # and rebuild the RagRegistry against it (registry holds a manager ref).
     from src.workspaces import WorkspaceManager, DEFAULT_WORKSPACE_ID
+    from src.services import RagRegistry
     app_module.workspace_manager = WorkspaceManager(str(tmp_path))
-    app_module._rag_cache.clear()
+    app_module.rag_registry = RagRegistry(app_module.workspace_manager)
     app_module.app.config["TESTING"] = True
 
     # Tests assert "(tmp / 'name')"; expose the workspace files dir as that

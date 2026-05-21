@@ -24,14 +24,36 @@ from config.settings_schema import (
     get_settings_schema,
     parse_request_settings,
 )
+from src.api.errors import register_error_handlers
+from src.api.schemas import (
+    AskRequest,
+    CacheClearRequest,
+    CreateWorkspaceRequest,
+    DeleteFileRequest,
+    UpdateWorkspaceRequest,
+    parse_body,
+)
+from src.services import RagRegistry
 
-# Setup logging
-setup_logging()
+# Setup logging — install_logging() replaces the legacy setup_logging
+# with the request-id aware version. We keep setup_logging() above for
+# backward compat with anything that still imports it but skip running it.
+from src.observability import (
+    install_flask_middleware,
+    install_logging,
+)
+install_logging()
 logger = get_logger(__name__)
 
 # Create Flask app
 app = Flask(__name__)
 CORS(app)
+# Attach the X-Request-ID middleware before any routes are defined; this
+# wires before_request / after_request hooks for every endpoint.
+install_flask_middleware(app)
+# Central exception→HTTP mapper: any RagArtError raised inside a route is
+# turned into a consistent JSON response (status + Turkish message).
+register_error_handlers(app)
 
 # File upload configuration — multi-format
 # Driven by the LoaderRegistry so adding a new loader auto-enables uploads.
@@ -47,13 +69,12 @@ def allowed_file(filename: str) -> bool:
 # ----- Global state — workspaces + lazy RAG cache -----
 #
 # Workspaces are NotebookLM-style isolated knowledge bases. Each workspace
-# has its own data folder and ChromaDB collection. We keep one RAG
-# instance per workspace (lazily created on first use) so the embedder
-# model can be shared while the vector store is separate.
+# has its own data folder and ChromaDB collection. The per-workspace RAG
+# lifecycle (lazy build, thread-safe cache, invalidation) lives in the
+# RagRegistry service — app.py just holds a singleton instance.
 
 workspace_manager = WorkspaceManager(settings.DATA_FOLDER)
-_rag_cache: dict = {}
-_rag_init_lock = threading.Lock()
+rag_registry = RagRegistry(workspace_manager)
 
 # Sample data seeding: ensure the default workspace has SOMETHING
 _default_files_dir = workspace_manager.files_dir(DEFAULT_WORKSPACE_ID)
@@ -65,46 +86,14 @@ system_status = "Initializing..."
 initialization_error = None
 
 
-def _build_rag_for_workspace(workspace_id: str) -> TurkishRAGSystem:
-    """Build (or retrieve) a fresh RAG instance scoped to a workspace."""
-    ws = workspace_manager.get(workspace_id)
-    if ws is None:
-        workspace_id = workspace_manager.resolve(workspace_id)
-        ws = workspace_manager.get(workspace_id)
-
-    api_key = settings.get_api_key()
-    model_type = settings.MODEL_TYPE
-    if model_type in ("deepseek", "openai", "groq", "huggingface") and not api_key:
-        logger.warning(
-            f"{StatusEmoji.WARNING} No API key found, falling back to local model"
-        )
-        model_type = "local"
-
-    persist_path = workspace_manager.vector_db_path(workspace_id, ws.vector_db)
-    rag = TurkishRAGSystem(
-        data_folder=str(workspace_manager.files_dir(workspace_id)),
-        model_type=model_type,
-        api_key=api_key,
-        chroma_db_path=str(persist_path),
-    )
-    rag.initialize()
-    return rag
-
-
 def get_rag_for(workspace_id: str) -> TurkishRAGSystem:
     """Return the cached RAG for a workspace, building lazily under lock."""
-    workspace_id = workspace_manager.resolve(workspace_id)
-    if workspace_id in _rag_cache:
-        return _rag_cache[workspace_id]
-    with _rag_init_lock:
-        if workspace_id not in _rag_cache:
-            _rag_cache[workspace_id] = _build_rag_for_workspace(workspace_id)
-    return _rag_cache[workspace_id]
+    return rag_registry.get(workspace_id)
 
 
 def invalidate_rag(workspace_id: str) -> None:
     """Force the next get_rag_for() call to rebuild the cache entry."""
-    _rag_cache.pop(workspace_id, None)
+    rag_registry.invalidate(workspace_id)
 
 
 def _current_workspace_id() -> str:
@@ -144,7 +133,7 @@ def index():
 def get_status():
     """Get system status (for the current workspace if header is set)."""
     ws_id = workspace_manager.resolve(request.headers.get("X-Workspace-Id"))
-    rag = _rag_cache.get(ws_id)
+    rag = rag_registry.cached(ws_id)
     return jsonify({
         "ready": system_ready and (rag is not None or ws_id == DEFAULT_WORKSPACE_ID),
         "status": system_status,
@@ -168,13 +157,12 @@ def ask_question():
             "status": system_status
         }), 503
 
+    # Validate the body before the try block: a bad request must surface
+    # as a clean 400 via the central handler, not get swallowed as a 500.
+    body = parse_body(AskRequest, request.get_json(silent=True))
+    question = body.question
+
     try:
-        data = request.get_json()
-        question = data.get("question", "").strip()
-
-        if not question:
-            return jsonify({"error": "Question cannot be empty"}), 400
-
         # Parse per-request settings from headers (BYOK)
         req_settings = parse_request_settings(request.headers)
         llm_override = None
@@ -213,6 +201,7 @@ def ask_question():
             retrieval_strategy=req_settings.retrieval_strategy,
             rerank=req_settings.rerank,
             rerank_fetch_k=req_settings.rerank_fetch_k,
+            selected_files=req_settings.selected_files,
             history=history,
             memory_strategy=req_settings.memory_strategy,
             deduplicate_context=req_settings.deduplicate_context,
@@ -332,7 +321,9 @@ def serve_source(filename):
         # to make traversal attempts loud rather than silent
         return jsonify({"error": "Invalid filename"}), 400
 
-    folder = os.path.abspath(settings.DATA_FOLDER)
+    ws_id = request.args.get("ws") or _current_workspace_id()
+    ws_id = workspace_manager.resolve(ws_id)
+    folder = str(workspace_manager.files_dir(ws_id))
     target = os.path.join(folder, safe)
     if not os.path.exists(target) or not os.path.isfile(target):
         return jsonify({"error": "Not found"}), 404
@@ -365,7 +356,7 @@ def settings_schema():
 def health_check():
     """Health check endpoint."""
     ws_id = _current_workspace_id()
-    rag = _rag_cache.get(ws_id)
+    rag = rag_registry.cached(ws_id)
     return jsonify({
         "status": "healthy",
         "system_ready": system_ready,
@@ -476,14 +467,10 @@ def upload_file():
 @app.route("/delete-file", methods=["POST"])
 def delete_file():
     """Delete a file from the knowledge base."""
-    data = request.get_json()
-    filename = data.get("filename", "")
-    
-    if not filename:
-        return jsonify({"error": "No filename provided"}), 400
-    
+    body = parse_body(DeleteFileRequest, request.get_json(silent=True))
+
     # Secure the filename to prevent path traversal
-    filename = secure_filename(filename)
+    filename = secure_filename(body.filename)
     ws_id = _current_workspace_id()
     filepath = str(workspace_manager.files_dir(ws_id) / filename)
 
@@ -507,17 +494,33 @@ def delete_file():
 
 @app.route("/reindex", methods=["POST"])
 def reindex_documents():
-    """Rebuild the vector store for the active workspace only."""
+    """Update the vector store for the active workspace.
+
+    Body JSON (optional):
+        {"full": true}  → full rebuild (re-embeds every file). Needed when
+                           a file was edited in place (same name).
+        {} or omitted   → incremental sync: only new files are embedded,
+                           removed files are dropped. Cheap as the KB grows.
+    """
     global system_ready, system_status
 
+    data = request.get_json(silent=True) or {}
+    full = bool(data.get("full"))
     ws_id = _current_workspace_id()
     try:
         system_status = f"Reindexing workspace '{ws_id}'..."
         system_ready = False
 
-        logger.info(f"{StatusEmoji.LOADING} Reindexing ws={ws_id}...")
+        logger.info(
+            f"{StatusEmoji.LOADING} Reindexing ws={ws_id} "
+            f"({'full' if full else 'incremental'})..."
+        )
         rag = get_rag_for(ws_id)
-        rag.create_vector_store()
+        if full:
+            rag.create_vector_store()
+            sync = {"mode": "full", "added": [], "removed": [], "added_chunks": 0}
+        else:
+            sync = rag.sync_index()
         workspace_manager.touch(ws_id)
 
         # Invalidate response & semantic caches — knowledge base changed,
@@ -534,6 +537,7 @@ def reindex_documents():
         return jsonify({
             "success": True,
             "message": "Knowledge base reindexed successfully.",
+            "sync": sync,
             "document_count": rag.document_loader.document_count,
             "workspace_id": ws_id,
         })
@@ -604,10 +608,13 @@ def cache_clear():
     if not system_ready:
         return jsonify({"error": "System not ready"}), 503
 
+    # layer is validated by the schema (Literal) — an unknown layer is
+    # rejected here as a 400 before any cache work happens.
+    body = parse_body(CacheClearRequest, request.get_json(silent=True))
+    layer = body.layer
+
     try:
         rag = get_rag_for(_current_workspace_id())
-        data = request.get_json(silent=True) or {}
-        layer = data.get("layer", "all")
 
         cleared = {}
         if layer in ("all", "embedding"):
@@ -616,9 +623,6 @@ def cache_clear():
             cleared["response"] = rag.response_cache.clear()
         if layer in ("all", "semantic"):
             cleared["semantic"] = rag.semantic_cache.clear()
-
-        if not cleared:
-            return jsonify({"error": f"Unknown layer: {layer}"}), 400
 
         logger.info(f"{StatusEmoji.SUCCESS} Cache cleared: {cleared}")
         return jsonify({"success": True, "cleared": cleared})
@@ -641,24 +645,20 @@ def list_workspaces():
 @app.route("/workspaces", methods=["POST"])
 def create_workspace():
     """Create a new workspace from JSON body: {name, color?, description?, vector_db?}."""
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "Workspace name required"}), 400
+    body = parse_body(CreateWorkspaceRequest, request.get_json(silent=True))
 
-    vector_db = data.get("vector_db", "chroma")
-    if not VectorStoreFactory.is_available(vector_db):
+    if not VectorStoreFactory.is_available(body.vector_db):
         return jsonify({
-            "error": f"Unknown vector_db '{vector_db}'",
+            "error": f"Unknown vector_db '{body.vector_db}'",
             "available": [s["id"] for s in VectorStoreFactory.available()],
         }), 400
 
     try:
         ws = workspace_manager.create(
-            name=name,
-            color=data.get("color"),
-            description=data.get("description", ""),
-            vector_db=vector_db,
+            name=body.name,
+            color=body.color,
+            description=body.description,
+            vector_db=body.vector_db,
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -687,21 +687,20 @@ def update_workspace(ws_id):
     rebuilds it against the new DB. The user still needs to reindex —
     the old DB's vectors don't migrate.
     """
-    data = request.get_json(silent=True) or {}
+    body = parse_body(UpdateWorkspaceRequest, request.get_json(silent=True))
 
-    new_vector_db = data.get("vector_db")
-    if new_vector_db is not None:
-        if not VectorStoreFactory.is_available(new_vector_db):
-            return jsonify({
-                "error": f"Unknown vector_db '{new_vector_db}'",
-                "available": [s["id"] for s in VectorStoreFactory.available()],
-            }), 400
+    new_vector_db = body.vector_db
+    if new_vector_db is not None and not VectorStoreFactory.is_available(new_vector_db):
+        return jsonify({
+            "error": f"Unknown vector_db '{new_vector_db}'",
+            "available": [s["id"] for s in VectorStoreFactory.available()],
+        }), 400
 
     ws = workspace_manager.update(
         ws_id,
-        name=data.get("name"),
-        color=data.get("color"),
-        description=data.get("description"),
+        name=body.name,
+        color=body.color,
+        description=body.description,
         vector_db=new_vector_db,
     )
     if ws is None:
