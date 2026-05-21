@@ -41,6 +41,7 @@ from src.services import RagRegistry
 from src.observability import (
     install_flask_middleware,
     install_logging,
+    metrics,
 )
 install_logging()
 logger = get_logger(__name__)
@@ -354,16 +355,30 @@ def settings_schema():
 
 @app.route("/health")
 def health_check():
-    """Health check endpoint."""
+    """Liveness + readiness probe with a bit of runtime context."""
     ws_id = _current_workspace_id()
     rag = rag_registry.cached(ws_id)
+    snap = metrics.snapshot()
     return jsonify({
         "status": "healthy",
         "system_ready": system_ready,
+        "system_status": system_status,
         "model_type": rag.model_type if rag else "unknown",
         "api_available": bool(rag and rag.api_key) if rag else False,
         "active_workspace": ws_id,
+        "uptime_seconds": snap["uptime_seconds"],
+        "requests_total": snap["requests_total"],
     })
+
+
+@app.route("/metrics")
+def metrics_endpoint():
+    """Process metrics: request counts, latency percentiles, errors, uptime.
+
+    Plain JSON (no Prometheus dependency) — keeps the showcase repo to a
+    single `pip install`. Point a dashboard at it or just curl it.
+    """
+    return jsonify(metrics.snapshot())
 
 
 @app.route("/stats")

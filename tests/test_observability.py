@@ -111,3 +111,68 @@ class TestFlaskMiddleware:
         client = app_with_middleware.test_client()
         seen = {client.get("/echo").get_json()["rid"] for _ in range(10)}
         assert len(seen) == 10  # all distinct
+
+
+class TestMetrics:
+    def _fresh(self):
+        from src.observability import Metrics
+        return Metrics()
+
+    def test_counts_total_and_status_buckets(self):
+        m = self._fresh()
+        m.record("/ask", 200, 0.10)
+        m.record("/ask", 200, 0.20)
+        m.record("/ask", 500, 0.05)
+        snap = m.snapshot()
+        assert snap["requests_total"] == 3
+        assert snap["requests_by_status"] == {"2xx": 2, "5xx": 1}
+        assert snap["errors_5xx"] == 1
+
+    def test_counts_per_endpoint(self):
+        m = self._fresh()
+        m.record("/ask", 200, 0.1)
+        m.record("/health", 200, 0.01)
+        m.record("/ask", 200, 0.1)
+        snap = m.snapshot()
+        assert snap["requests_by_endpoint"] == {"/ask": 2, "/health": 1}
+
+    def test_latency_percentiles(self):
+        m = self._fresh()
+        for i in range(1, 101):          # 0.01 .. 1.00 s
+            m.record("/ask", 200, i / 100)
+        lat = m.snapshot()["latency_seconds"]
+        assert lat["samples"] == 100
+        assert lat["p50"] == pytest.approx(0.50, abs=0.02)
+        assert lat["p99"] == pytest.approx(1.00, abs=0.02)
+        assert lat["max"] == pytest.approx(1.00, abs=0.001)
+
+    def test_empty_snapshot_is_safe(self):
+        snap = self._fresh().snapshot()
+        assert snap["requests_total"] == 0
+        assert snap["latency_seconds"]["p95"] == 0.0
+
+    def test_reset_clears_counters(self):
+        m = self._fresh()
+        m.record("/ask", 200, 0.1)
+        m.reset()
+        assert m.snapshot()["requests_total"] == 0
+
+    def test_middleware_feeds_the_metrics_singleton(self):
+        from flask import Flask, jsonify
+        from src.observability import metrics
+
+        metrics.reset()
+        app = Flask(__name__)
+        install_flask_middleware(app)
+
+        @app.route("/ping")
+        def ping():
+            return jsonify({"ok": True})
+
+        client = app.test_client()
+        client.get("/ping")
+        client.get("/ping")
+        snap = metrics.snapshot()
+        assert snap["requests_total"] == 2
+        assert snap["requests_by_endpoint"].get("/ping") == 2
+        metrics.reset()
