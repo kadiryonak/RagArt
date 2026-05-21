@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragart"
+version = "1.0.0"
+description = "RagArt — a Turkish-focused, multi-technique Retrieval-Augmented Generation platform"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Kadir Yönak" }]
+keywords = [
+    "rag", "retrieval-augmented-generation", "nlp", "turkish",
+    "llm", "chromadb", "langchain", "semantic-search",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
+dependencies = [
+    "langchain>=0.1.0",
+    "langchain-huggingface>=0.0.1",
+    "langchain-chroma>=0.1.0",
+    "langchain-community>=0.0.20",
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.2.2",
+    "rank_bm25>=0.2.2",
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0",
+    "openai>=1.0.0",
+    "requests>=2.28.0",
+    "huggingface-hub>=0.16.0",
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "flask>=2.3.0",
+    "flask-cors>=4.0.0",
+    "python-dotenv>=1.0.0",
+    "pandas>=2.0.0",
+    "tiktoken>=0.4.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0", "pytest-cov>=4.0.0", "black>=23.0.0", "flake8>=6.0.0", "mypy>=1.0.0"]
+qdrant = ["qdrant-client>=1.10.0"]
+
+[project.urls]
+Homepage = "https://github.com/kadiryonak/RagArt"
+Repository = "https://github.com/kadiryonak/RagArt"
+
+# `ragart` console command — starts the web server (see ragart_cli.py).
+[project.scripts]
+ragart = "ragart_cli:main"
+
+[tool.setuptools]
+# app.py and ragart_cli.py are top-level modules, not inside a package.
+py-modules = ["app", "ragart_cli"]
+
+[tool.setuptools.packages.find]
+# Ship the source packages; tests/, data/, templates/ are not packages.
+include = ["src*", "config*"]
