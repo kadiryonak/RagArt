@@ -59,6 +59,8 @@ prod = ["gunicorn>=21.2.0", "gevent>=23.9.0"]
 # OCR for scanned / image-only PDFs (Turkish + English). Auto-used by the
 # PDF loader when installed:  pip install "ragart[ocr]"
 ocr = ["pypdfium2>=4.0.0", "easyocr>=1.7.0"]
+# Error monitoring — Sentry. Activated when SENTRY_DSN env var is set.
+monitoring = ["sentry-sdk[flask]>=2.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/kadiryonak/RagArt"

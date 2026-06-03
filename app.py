@@ -28,6 +28,38 @@ logger = get_logger(__name__)
 _MAX_UPLOAD_BYTES = 16 * 1024 * 1024  # 16 MB upload cap
 
 
+def _init_sentry() -> None:
+    """Wire Sentry error monitoring — only if SENTRY_DSN is set and the SDK
+    is installed. A no-op otherwise, so the showcase runs with zero setup and
+    the owner just sets SENTRY_DSN (and `pip install "ragart[monitoring]"`).
+    """
+    import os
+
+    dsn = os.getenv("SENTRY_DSN")
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration
+    except ImportError:
+        logger.warning(
+            f"{StatusEmoji.WARNING} SENTRY_DSN set but sentry-sdk not installed "
+            "— pip install \"ragart[monitoring]\""
+        )
+        return
+    sentry_sdk.init(
+        dsn=dsn,
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+        send_default_pii=False,  # privacy: no PII to Sentry
+    )
+    logger.info(f"{StatusEmoji.SUCCESS} Sentry error monitoring enabled")
+
+
+_init_sentry()
+
+
 def create_app() -> Flask:
     """Build and configure the Flask app.
 

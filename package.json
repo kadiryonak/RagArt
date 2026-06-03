@@ -1,0 +1,15 @@
+{
+  "name": "ragart-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright end-to-end tests for the RagArt web UI",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
+    "explore": "python scripts/agent_explore.py"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

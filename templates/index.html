@@ -826,8 +826,9 @@ input[type=range]{flex:1;accent-color:var(--accent)}
                 <div class="fhint">Seçilen sağlayıcının varsayılan modeli aşağıda öneri olarak görünür.</div>
               </div>
               <div class="field">
-                <label class="flbl" for="setModel">Model</label>
-                <input class="ctl" id="setModel" type="text">
+                <label class="flbl" for="setModelSelect">Model</label>
+                <select class="ctl" id="setModelSelect"></select>
+                <input class="ctl" id="setModel" type="text" placeholder="Özel model adı" style="margin-top:8px">
                 <div class="fhint" id="modelHint"></div>
               </div>
               <div class="field">
@@ -1180,6 +1181,7 @@ input[type=range]{flex:1;accent-color:var(--accent)}
 <div id="toastWrap" aria-live="polite"></div>
 <div id="modalRoot"></div>
 
+<button id="feedbackFab" title="Geri bildirim" style="position:fixed;right:18px;bottom:18px;z-index:9998;border:none;border-radius:24px;padding:10px 16px;background:#6d5cf0;color:#fff;font-size:13px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35)">💬 Geri bildirim</button>
 <script>
 "use strict";
 /* ============================================================
@@ -1369,6 +1371,32 @@ function defaultModel(){
   if(!state.schema) return '';
   const p=state.schema.providers.find(x=>x.id===state.settings.provider);
   return p?p.default_model:'';
+}
+function providerModels(id){
+  // Curated popular models per provider (backend schema only has the default).
+  const fromMock=((MOCK_SCHEMA.providers.find(p=>p.id===id))||{}).models||[];
+  const list=fromMock.slice();
+  const dm=defaultModel();
+  if(dm && !list.includes(dm)) list.unshift(dm);
+  return list;
+}
+function populateModelSelect(){
+  const sel=$('#setModelSelect'), inp=$('#setModel');
+  if(!sel) return;
+  const id=state.settings.provider;
+  const models=id?providerModels(id):[];
+  const cur=state.settings.model||'';
+  if(!models.length){
+    // No curated list (e.g. ollama/local) → free-text only.
+    sel.classList.add('hide'); inp.classList.remove('hide'); inp.value=cur;
+    return;
+  }
+  sel.classList.remove('hide');
+  sel.innerHTML=models.map(m=>'<option value="'+escapeHtml(m)+'">'+escapeHtml(m)+'</option>').join('')
+    +'<option value="__custom__">✏️ Özel model adı yaz…</option>';
+  const isCustom=cur && !models.includes(cur);
+  if(isCustom){ sel.value='__custom__'; inp.classList.remove('hide'); inp.value=cur; }
+  else { sel.value=cur||defaultModel()||models[0]; inp.classList.add('hide'); }
 }
 function providerNeedsKey(id){
   if(!id) return false;
@@ -2344,6 +2372,7 @@ function renderSettings(){
     providerOptions.map(it=>'<option value="'+it.id+'">'+escapeHtml(it.label)+'</option>').join('');
   providerSelect.value=s.provider||'';
   $('#setModel').value=s.model;
+  populateModelSelect();
   updateModelHint();
   syncApiKeyField();
   /* prompt */
@@ -2570,7 +2599,13 @@ function bindEvents(){
     state.settings.provider=e.target.value;
     state.settings.model='';
     $('#setModel').value='';
-    updateModelHint(); syncApiKeyField(); saveSettings(); updateStatusBar();
+    populateModelSelect(); updateModelHint(); syncApiKeyField(); saveSettings(); updateStatusBar();
+  };
+  $('#setModelSelect').onchange=e=>{
+    const v=e.target.value, inp=$('#setModel');
+    if(v==='__custom__'){ inp.classList.remove('hide'); inp.value=''; inp.focus(); state.settings.model=''; }
+    else { inp.classList.add('hide'); state.settings.model=v; }
+    saveSettings(); updateStatusBar();
   };
   $('#setModel').oninput=e=>{ state.settings.model=e.target.value.trim(); saveSettings(); };
   $('#setApiKey').oninput=e=>{
@@ -2664,6 +2699,62 @@ function fallbackCopy(txt,cb){
 }
 
 /* ============================================================  INIT  */
+/* ===========================================  FEEDBACK + CONSENT  ====
+   Privacy-first: we tell users we collect anonymous usage data + optional
+   feedback, with a dismissible consent notice. Feedback (rating + message)
+   posts to /feedback (stored as JSONL server-side). An exit-intent trigger
+   gently prompts once per session. Self-contained: builds its own DOM. */
+const FeedbackUI=(()=>{
+  let submitted=false, exitArmed=false;
+  function el(tag,attrs,html){const e=document.createElement(tag);if(attrs)for(const k in attrs)e.setAttribute(k,attrs[k]);if(html!=null)e.innerHTML=html;return e;}
+  function showConsent(){
+    if(LS.get('ragart-consent',false)) return;
+    const bar=el('div',{id:'consentBar',style:'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;max-width:560px;width:calc(100% - 32px);background:var(--panel,#1c1c24);color:var(--text,#eee);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.4);font-size:13px;display:flex;gap:12px;align-items:center'},
+      '<span style="flex:1">📊 Deneyimi iyileştirmek için <b>anonim</b> kullanım verisi ve isteğe bağlı geri bildirim topluyoruz. Kişisel veri saklanmaz.</span>');
+    const ok=el('button',{class:'btn',style:'white-space:nowrap'},'Tamam');
+    ok.onclick=()=>{LS.set('ragart-consent',true);bar.remove();};
+    bar.appendChild(ok); document.body.appendChild(bar);
+  }
+  function openModal(){
+    if(document.getElementById('fbModal')) return;
+    let rating=0;
+    const ov=el('div',{id:'fbModal',style:'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center'});
+    const card=el('div',{style:'background:var(--panel,#1c1c24);color:var(--text,#eee);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:20px;max-width:420px;width:calc(100% - 32px)'},
+      '<h3 style="margin:0 0 6px">Geri bildiriminiz</h3><p style="margin:0 0 12px;font-size:13px;opacity:.8">Anonimdir. RagArt\'ı geliştirmemize yardımcı olur.</p>');
+    const stars=el('div',{style:'font-size:28px;cursor:pointer;margin-bottom:10px;user-select:none'});
+    for(let i=1;i<=5;i++){const s=el('span',{'data-i':i},'☆');s.onclick=()=>{rating=i;[...stars.children].forEach((c,idx)=>c.textContent=idx<rating?'★':'☆');};stars.appendChild(s);}
+    const ta=el('textarea',{class:'ctl',rows:'4',placeholder:'Görüş, öneri veya bir sorun…',style:'width:100%;resize:vertical'});
+    const row=el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:12px'});
+    const cancel=el('button',{class:'btn'},'Kapat');
+    const send=el('button',{class:'btn btn-primary'},'Gönder');
+    cancel.onclick=()=>ov.remove();
+    send.onclick=async()=>{
+      if(!rating && !ta.value.trim()){toast('warning','Boş','Bir puan verin veya mesaj yazın.');return;}
+      send.disabled=true;
+      try{
+        const last=state.lastAnswer||{};
+        await fetch('/feedback',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},state.activeWorkspace?{'X-Workspace-Id':state.activeWorkspace.id}:{}),
+          body:JSON.stringify({rating:rating||null,message:ta.value.trim(),page:location.pathname,
+            question:(state.conversationHistory||[]).filter(m=>m.role==='user').slice(-1)[0]?.content||null})});
+        submitted=true; ov.remove(); toast('success','Teşekkürler','Geri bildiriminiz kaydedildi.');
+      }catch(e){ toast('error','Hata','Geri bildirim gönderilemedi.'); }
+      finally{ send.disabled=false; }
+    };
+    row.append(cancel,send); card.append(stars,ta,row); ov.appendChild(card);
+    ov.onclick=(e)=>{if(e.target===ov)ov.remove();};
+    document.body.appendChild(ov); ta.focus();
+  }
+  function armExitIntent(){
+    document.addEventListener('mouseout',(e)=>{
+      if(exitArmed||submitted) return;
+      if(!e.relatedTarget && e.clientY<=0 && LS.get('ragart-consent',false)){
+        exitArmed=true; openModal();
+      }
+    });
+  }
+  return {init(){showConsent();armExitIntent();const b=document.getElementById('feedbackFab');if(b)b.onclick=openModal;}, open:openModal};
+})();
+
 async function init(){
   initTheme();
   state.devMode=LS.get('ragart-devmode',false);
@@ -2675,6 +2766,7 @@ async function init(){
   const savedWs=LS.get('ragart-active-ws',null);
   if(savedWs&&state.workspaces.some(w=>w.id===savedWs)) state.activeWorkspace=state.workspaces.find(w=>w.id===savedWs);
   router();
+  FeedbackUI.init();
 }
 init();
 </script>

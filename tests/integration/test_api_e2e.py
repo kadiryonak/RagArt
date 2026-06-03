@@ -186,6 +186,49 @@ class TestFileLifecycle:
         assert body["source_type"] != "insufficient_data"
         assert "demir.txt" in [s["title"] for s in body["sources"]]
 
+    @pytest.mark.parametrize("filename,content", [
+        ("notlar.txt", b"Termodinamik isinin enerjiye donusumunu inceleyen bilim dalidir."),
+        ("rehber.md", b"# Termodinamik\n\nTermodinamik isi ve enerji arasindaki iliskiyi inceler."),
+        ("veri.json", b'[{"topic":"Termodinamik","definition":"Termodinamik isi enerji bilimidir."}]'),
+    ])
+    def test_other_formats_upload_reindex_query(self, live, filename, content):
+        # "Diğer türlerde veri yüklendiğinde de problem olmasın" — txt / md / json
+        # must each upload, reindex and become retrievable end-to-end.
+        client, _, _ = live
+        up = client.post(
+            "/upload",
+            data={"file": (io.BytesIO(content), filename)},
+            content_type="multipart/form-data",
+        )
+        assert up.status_code == 200, up.get_data(as_text=True)
+        assert up.get_json()["document_count"] >= 1
+        rx = client.post("/reindex", json={})
+        assert rx.status_code == 200
+        assert filename in rx.get_json()["sync"]["added"]
+        r = client.post("/ask", json={"question": "Termodinamik nedir?"})
+        assert r.status_code == 200
+        assert filename in [s["title"] for s in r.get_json()["sources"]]
+
+    def test_docx_upload(self, live):
+        docx = pytest.importorskip("docx")  # python-docx
+        client, _, _ = live
+        doc = docx.Document()
+        doc.add_paragraph("Entropi termodinamikte düzensizliğin ölçüsüdür.")
+        doc.add_paragraph("Entropi her zaman artma eğilimindedir.")
+        buf = io.BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        up = client.post(
+            "/upload",
+            data={"file": (buf, "entropi.docx")},
+            content_type="multipart/form-data",
+        )
+        assert up.status_code == 200, up.get_data(as_text=True)
+        assert up.get_json()["document_count"] >= 1
+        rx = client.post("/reindex", json={})
+        assert rx.status_code == 200
+        assert "entropi.docx" in rx.get_json()["sync"]["added"]
+
     def test_upload_rejects_unsupported_type(self, live):
         client, _, _ = live
         up = client.post(

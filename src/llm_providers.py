@@ -290,10 +290,11 @@ class AnthropicProvider(BaseLLMProvider):
     def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001"):
         self.api_key = api_key
         self.model = model
+        # NB: Claude 4.x rejects temperature + top_p together — we send only
+        # one (see _payload). Default to temperature.
         self.defaults: Dict[str, Any] = {
             "temperature": 0.1,
             "max_tokens": 1024,
-            "top_p": 0.9,
         }
         self.timeout = 60
 
@@ -308,11 +309,15 @@ class AnthropicProvider(BaseLLMProvider):
         cfg = _merge(self.defaults, params)
         payload: Dict[str, Any] = {
             "model": params.get("model", self.model),
-            "max_tokens": cfg["max_tokens"],     # required by the API
-            "temperature": cfg["temperature"],
-            "top_p": cfg["top_p"],
+            "max_tokens": cfg.get("max_tokens", 1024),   # required by the API
             "messages": [{"role": "user", "content": prompt}],
         }
+        # Anthropic rejects temperature + top_p together — send exactly one,
+        # preferring temperature.
+        if cfg.get("temperature") is not None:
+            payload["temperature"] = cfg["temperature"]
+        elif cfg.get("top_p") is not None:
+            payload["top_p"] = cfg["top_p"]
         if stream:
             payload["stream"] = True
         return payload

@@ -72,6 +72,22 @@ class DeleteFileRequest(_Schema):
     filename: str = Field(min_length=1, description="Silinecek dosya adı")
 
 
+class FeedbackRequest(_Schema):
+    """POST /feedback gövdesi — kullanıcı geri bildirimi (anonim).
+
+    rating: 1-5 yıldız (opsiyonel); message: serbest metin (opsiyonel);
+    en az biri dolu olmalı (route kontrol eder). question/answer: hangi
+    cevaba dair geri bildirim olduğunu bağlamlamak için opsiyonel.
+    """
+
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    message: str = Field(default="", max_length=4000)
+    category: Optional[str] = Field(default=None, max_length=40)
+    question: Optional[str] = Field(default=None, max_length=2000)
+    answer: Optional[str] = Field(default=None, max_length=8000)
+    page: Optional[str] = Field(default=None, max_length=200)
+
+
 class CacheClearRequest(_Schema):
     """POST /cache/clear gövdesi.
 

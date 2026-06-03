@@ -8,11 +8,12 @@ from flask import Flask
 
 from src.api.routes.cache import bp as cache_bp
 from src.api.routes.chat import bp as chat_bp
+from src.api.routes.feedback import bp as feedback_bp
 from src.api.routes.files import bp as files_bp
 from src.api.routes.system import bp as system_bp
 from src.api.routes.workspaces import bp as workspaces_bp
 
-_BLUEPRINTS = (system_bp, chat_bp, files_bp, workspaces_bp, cache_bp)
+_BLUEPRINTS = (system_bp, chat_bp, files_bp, workspaces_bp, cache_bp, feedback_bp)
 
 
 def register_blueprints(app: Flask) -> None:

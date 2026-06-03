@@ -40,7 +40,9 @@ PROVIDER_PARAMS: Dict[str, Dict[str, Any]] = {
         "max_tokens": {"type": "int", "min": 64, "max": 8192, "default": 800, "step": 64},
     },
     "anthropic": {
-        **COMMON_LLM_PARAMS,
+        # NB: Claude 4.x rejects temperature + top_p together, so we expose
+        # only temperature here (the provider sends just one anyway).
+        "temperature": COMMON_LLM_PARAMS["temperature"],
         "max_tokens": {"type": "int", "min": 64, "max": 8192, "default": 1024, "step": 64},
     },
     "ollama": {
