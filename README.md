@@ -62,7 +62,7 @@ RagArt is an end-to-end RAG pipeline that goes beyond basic semantic search. It 
                     │                                                      │
                     │  ┌─────────────────────────────────────────────────┐ │
                     │  │           LLM Provider Factory                   │ │
-                    │  │  DeepSeek · OpenAI · Groq · Ollama · HF · Local │ │
+                    │  │ Groq·Anthropic·DeepSeek·OpenAI·Ollama·HF·Local  │ │
                     │  └─────────────────────────────────────────────────┘ │
                     └──────────────────────────────────────────────────────┘
 ```
@@ -204,7 +204,7 @@ Every `/ask` request can override the entire pipeline via HTTP headers:
 
 | Header | Controls |
 |--------|----------|
-| `X-Provider` | LLM provider (deepseek/openai/groq/ollama/huggingface/local) |
+| `X-Provider` | LLM provider (groq/anthropic/deepseek/openai/ollama/huggingface/local) |
 | `X-API-Key` | API key for the chosen provider |
 | `X-Model` | Model name override |
 | `X-LLM-Params` | JSON: temperature, top_p, max_tokens, etc. |
@@ -225,7 +225,7 @@ This makes RagArt a **multi-tenant, stateless RAG backend** — each request can
 | Format | Loader | Pages/Docs |
 |--------|--------|------------|
 | `.json` | Custom (nested key extraction) | Per array element |
-| `.pdf` | `pypdf` → per-page Document | Per page |
+| `.pdf` | `pypdf` text layer + **scanned-PDF detection**; optional OCR (Turkish) for image-only PDFs via `pip install "ragart[ocr]"` | Per page |
 | `.docx` | `python-docx` → paragraph extraction | Per file |
 | `.md` | Stdlib (raw text) | Per file |
 | `.txt` | Stdlib (raw text) | Per file |
@@ -420,14 +420,71 @@ GROQ_API_KEY=your_groq_api_key_here
 
 ---
 
+## 🌐 Deployment (Production)
+
+`ragart` (and `ragart --debug`) use Flask's **development** server — fine for
+local use, not for the public web. For production RagArt ships a real WSGI
+stack. The app streams answers over **Server-Sent Events** (`/ask/stream`),
+so the production server must not buffer or block per-connection — both
+options below handle that.
+
+### Option 1 — `ragart --production` (cross-platform, simplest)
+
+Uses [waitress](https://docs.pylonsproject.org/projects/waitress/) (Windows +
+Linux, pure Python, bundled in core deps):
+
+```bash
+ragart --production --no-browser --host 0.0.0.0 --port 5000
+```
+
+### Option 2 — gunicorn + gevent (Linux / Docker / PaaS, best concurrency)
+
+The SSE-friendly stack for real traffic. Config in **`gunicorn.conf.py`**
+(gevent worker, no request timeout, reads `$PORT` / `$WEB_CONCURRENCY`):
+
+```bash
+pip install -e ".[prod]"          # gunicorn + gevent
+gunicorn -c gunicorn.conf.py app:app
+```
+
+### Option 3 — Docker (production image)
+
+The image runs gunicorn + gevent and ships a `/health` `HEALTHCHECK`:
+
+```bash
+docker compose up           # → http://localhost:5000
+# or
+docker build -t ragart . && docker run -p 5000:5000 ragart
+```
+
+### Platform-as-a-Service (Render / Railway / Fly / Heroku)
+
+A **`Procfile`** is included:
+
+```
+web: gunicorn -c gunicorn.conf.py app:app
+```
+
+These platforms inject `$PORT` (honoured by `gunicorn.conf.py`) and probe
+`/health` for readiness. Set `MODEL_TYPE` + the matching API key as
+environment variables in the platform dashboard (never commit `.env`).
+
+> **Note:** the embedding model (~470 MB) downloads on first query. Mount a
+> persistent volume at `~/.cache/huggingface` (docker-compose already does)
+> so it isn't re-downloaded on every restart, and give health checks a
+> generous `start-period` for the first boot.
+
+---
+
 ## 🔧 Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MODEL_TYPE` | LLM provider: `deepseek`, `openai`, `groq`, `ollama`, `huggingface`, `local` | `local` |
+| `MODEL_TYPE` | LLM provider: `groq`, `anthropic`, `deepseek`, `openai`, `ollama`, `huggingface`, `local` | `local` |
+| `GROQ_API_KEY` | Groq API key (free tier available) | — |
+| `ANTHROPIC_API_KEY` | Anthropic (Claude) API key | — |
 | `DEEPSEEK_API_KEY` | DeepSeek API key | — |
 | `OPENAI_API_KEY` | OpenAI API key | — |
-| `GROQ_API_KEY` | Groq API key (free tier available) | — |
 | `HUGGINGFACE_API_KEY` | HuggingFace API key | — |
 | `DATA_FOLDER` | Knowledge base folder | `./data` |
 | `CHROMA_DB_PATH` | Vector store persistence path | `./chroma_db` |
@@ -488,20 +545,39 @@ GROQ_API_KEY=your_groq_api_key_here
 
 ## 🧪 Testing
 
+**850+ tests** at ~89% coverage, split into two layers:
+
+- **Unit tests** — fast, isolated, every module/method (`tests/test_*.py`).
+- **Integration tests** — the *real* stack end-to-end (`tests/integration/`):
+  Flask → blueprints → `RagRegistry` → `TurkishRAGSystem` → real pipeline →
+  real ChromaDB → local LLM, plus SSE streaming, the upload→reindex→query
+  lifecycle, and workspace isolation. The embedding model is swapped for a
+  deterministic stub so they run in seconds without the 470 MB download.
+
 ```bash
-# Run all tests
-python -m pytest tests/ -v
+# Everything (unit + integration)
+python -m pytest tests/ --ignore=tests/evaluation -v
 
-# Run with coverage
-python -m pytest tests/ --cov=src --cov-report=html
+# Fast lane only (skip integration) — for pre-commit / quick loops
+python -m pytest tests/ --ignore=tests/evaluation -m "not integration"
 
-# Run evaluation (mock RAG, no API needed)
+# Integration tests only (full end-to-end HTTP)
+python -m pytest tests/integration/ -v
+
+# Coverage report
+python -m pytest tests/ --ignore=tests/evaluation --cov=src --cov=config --cov-report=html
+```
+
+### Evaluation harness
+
+```bash
+# Mock RAG, no API needed
 python scripts/run_eval.py --mock-rag --layers L1,L3
 
-# Run evaluation with real RAG
+# Real RAG
 python scripts/run_eval.py --layers L1,L2,L3 --name baseline
 
-# Run with LLM-as-Judge (requires GROQ_API_KEY)
+# With LLM-as-Judge (requires GROQ_API_KEY)
 python scripts/run_eval.py --with-judge --name full-eval
 ```
 

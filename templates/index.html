@@ -1098,6 +1098,7 @@ input[type=range]{flex:1;accent-color:var(--accent)}
             <p>RagArt birden çok LLM sağlayıcısını destekler. Ayarlar → Sağlayıcı &amp; API Key bölümünden seçim yaparsınız:</p>
             <ul>
               <li><code>groq</code> — Çok hızlı çıkarım; varsayılan model <code>llama-3.3-70b-versatile</code>.</li>
+              <li><code>anthropic</code> — Claude modelleri; Türkçe ve akıl yürütmede güçlü, varsayılan <code>claude-haiku-4-5</code>.</li>
               <li><code>openai</code> — Geniş model yelpazesi; <code>gpt-4o-mini</code> uygun maliyetli başlangıç.</li>
               <li><code>deepseek</code> — Güçlü akıl yürütme; ekonomik.</li>
               <li><code>ollama</code> — Tamamen yerel, anahtar gerektirmez; gizlilik önceliğindeyse ideal.</li>
@@ -1209,6 +1210,7 @@ const WS_COLORS = ['#6d5cf0','#4f9a6a','#c69143','#c25a5a','#3b8ea5','#a857b8','
 const MOCK_SCHEMA = {
   providers:[
     {id:'groq',label:'Groq',default_model:'llama-3.3-70b-versatile',models:['llama-3.3-70b-versatile','llama-3.1-8b-instant','mixtral-8x7b-32768']},
+    {id:'anthropic',label:'Anthropic (Claude)',default_model:'claude-haiku-4-5-20251001',models:['claude-haiku-4-5-20251001','claude-sonnet-4-6','claude-opus-4-8','claude-3-5-haiku-latest']},
     {id:'openai',label:'OpenAI',default_model:'gpt-4o-mini',models:['gpt-4o','gpt-4o-mini','gpt-4-turbo']},
     {id:'deepseek',label:'DeepSeek',default_model:'deepseek-chat',models:['deepseek-chat','deepseek-reasoner']},
     {id:'ollama',label:'Ollama (yerel)',default_model:'llama3.1',models:['llama3.1','qwen2.5','mistral']}
@@ -1374,7 +1376,7 @@ function providerNeedsKey(id){
     ?state.schema.providers.find(x=>x.id===id)
     :null;
   if(p) return !!p.needs_key;
-  return ['deepseek','openai','groq','huggingface'].includes(id);
+  return ['deepseek','openai','groq','anthropic','huggingface'].includes(id);
 }
 function buildHeaders(){
   const s=state.settings, h={'Content-Type':'application/json'};
@@ -1617,6 +1619,39 @@ function delay(ms,signal){
     const t=setTimeout(res,ms);
     if(signal) signal.addEventListener('abort',()=>{ clearTimeout(t); const er=new Error('aborted'); er.name='AbortError'; rej(er); });
   });
+}
+
+/* ====================================================  TYPEWRITER  ====
+   Reveals streamed text gradually ("typing"/typewriter effect), smoothing
+   over bursty token delivery. The local provider returns the whole answer
+   in a single chunk — this still types it out character by character. The
+   display is decoupled from arrival: push() sets the target text, and a
+   requestAnimationFrame loop catches up at ~cps characters/second. */
+function makeTypewriter(el,{cps=200}={}){
+  let target='', shown=0, ended=false, raf=0, last=0, resolveDone=null;
+  function tick(ts){
+    if(!last) last=ts;
+    const dt=Math.min(0.1,(ts-last)/1000); last=ts;
+    if(shown<target.length){
+      let step=Math.max(1,Math.round(cps*dt));
+      const behind=target.length-shown;
+      if(behind>300) step=Math.max(step,Math.round(behind/25)); // don't lag far behind
+      shown=Math.min(target.length,shown+step);
+      if(el) el.innerHTML=escapeHtml(target.slice(0,shown))+'<span class="stream-caret"></span>';
+    }
+    if(shown>=target.length&&ended){
+      if(el) el.innerHTML=escapeHtml(target);  // drop the caret
+      raf=0; const r=resolveDone; resolveDone=null; if(r) r(); return;
+    }
+    raf=requestAnimationFrame(tick);
+  }
+  function kick(){ if(!raf){ last=0; raf=requestAnimationFrame(tick); } }
+  return {
+    push(t){ target=t||''; kick(); },
+    finish(){ ended=true; return new Promise(res=>{ resolveDone=res; kick(); }); },
+    stop(){ if(raf) cancelAnimationFrame(raf); raf=0; ended=true;
+            if(resolveDone){ const r=resolveDone; resolveDone=null; r(); } },
+  };
 }
 
 /* ============================================================  MARKDOWN  */
@@ -1919,7 +1954,9 @@ async function doAsk(){
     '<div class="answer-body streaming" id="streamBody"><span class="stream-caret"></span></div>'+
     '<div class="sources-label">Kaynak Belgeler</div>'+
     '<div class="sources-list" id="sourcesList"><div class="answer-empty">Kaynaklar yükleniyor...</div></div>';
-  let answer='', sources=[], finished=false;
+  const tw=makeTypewriter($('#streamBody'),{cps:200});
+  ctrl.signal.addEventListener('abort',()=>tw.stop());  // stop typing if a new ask starts
+  let answer='', sources=[], finished=false, res=null, doneEv=null;
   try{
     await API.askStream(q,{
       signal:ctrl.signal,
@@ -1930,11 +1967,10 @@ async function doAsk(){
           if(sl) sl.innerHTML=renderSourcesList(sources);
         } else if(ev.type==='token'){
           answer+=ev.text||'';
-          const sb=$('#streamBody');
-          if(sb) sb.innerHTML=escapeHtml(answer)+'<span class="stream-caret"></span>';
+          tw.push(answer);                 // gradual typewriter reveal
         } else if(ev.type==='done'){
-          finished=true;
-          const res={
+          finished=true; doneEv=ev;
+          res={
             answer:ev.answer||answer,
             sources:sources,
             timings:{
@@ -1947,18 +1983,24 @@ async function doAsk(){
           state.lastAnswer=res;
           state.conversationHistory.push({role:'user',content:q});
           state.conversationHistory.push({role:'assistant',content:res.answer});
-          paintAnswer(res);
-          const g=ev.groundedness;
-          if(typeof g==='number'&&g<0.5) toast('warning','Düşük groundedness','Skor '+g.toFixed(2)+' — yanıt kaynaklarla zayıf destekleniyor.');
-          if(ev.cache_hit) toast('info','Cache hit','Yanıt önbellekten döndü.');
+          // Converge the typewriter to the final answer — covers the local
+          // provider (one chunk) and cache hits (no token events at all).
+          tw.push(res.answer);
         } else if(ev.type==='error'){
           throw new Error(ev.error||'Yanıt alınamadı.');
         }
       },
     });
-    if(ctrl.signal.aborted) return;
+    if(ctrl.signal.aborted){ tw.stop(); return; }
     if(!finished) throw new Error('Yanıt yarıda kesildi.');
+    await tw.finish();                      // let the typewriter drain to the end
+    if(ctrl.signal.aborted) return;
+    paintAnswer(res);                       // re-render as markdown once typed out
+    const g=doneEv&&doneEv.groundedness;
+    if(typeof g==='number'&&g<0.5) toast('warning','Düşük groundedness','Skor '+g.toFixed(2)+' — yanıt kaynaklarla zayıf destekleniyor.');
+    if(doneEv&&doneEv.cache_hit) toast('info','Cache hit','Yanıt önbellekten döndü.');
   }catch(e){
+    tw.stop();
     if(e.name==='AbortError'){ return; }
     area.innerHTML='<div class="answer-empty">'+ICON.alert+'<div>'+escapeHtml(e.message||'Yanıt alınamadı.')+'</div></div>'+
       '<div class="sources-label">Kaynak Belgeler</div>'+

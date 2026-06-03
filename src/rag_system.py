@@ -568,13 +568,18 @@ class TurkishRAGSystem:
         """
         if not documents:
             return 0.0
-        
-        total_score = 0.0
-        for doc in documents:
-            score = calculate_word_overlap(question, doc.page_content)
-            total_score += score
-        
-        return total_score / len(documents)
+
+        # Use the BEST-matching document, not the mean. A single strongly
+        # relevant chunk is sufficient grounding for an answer; averaging let
+        # distractor chunks dilute a good hit below the gate threshold — e.g.
+        # a name query ("Kadir kimdir?") that retrieves the right CV chunk
+        # plus a few unrelated ones would score ~0.12 (mean) and be rejected,
+        # even though one chunk matches at 0.5. max() asks the right question:
+        # "is there at least one relevant document?"
+        return max(
+            (calculate_word_overlap(question, doc.page_content) for doc in documents),
+            default=0.0,
+        )
     
     def _build_memory(
         self,

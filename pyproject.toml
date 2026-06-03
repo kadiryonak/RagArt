@@ -47,11 +47,18 @@ dependencies = [
     "pandas>=2.0.0",
     "tiktoken>=0.4.0",
     "pydantic>=2.0.0",
+    # Cross-platform production WSGI server for `ragart --production`.
+    "waitress>=3.0.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0.0", "pytest-cov>=4.0.0", "black>=23.0.0", "flake8>=6.0.0", "mypy>=1.0.0"]
 qdrant = ["qdrant-client>=1.10.0"]
+# Linux/Docker/PaaS production stack — SSE-friendly gunicorn + gevent.
+prod = ["gunicorn>=21.2.0", "gevent>=23.9.0"]
+# OCR for scanned / image-only PDFs (Turkish + English). Auto-used by the
+# PDF loader when installed:  pip install "ragart[ocr]"
+ocr = ["pypdfium2>=4.0.0", "easyocr>=1.7.0"]
 
 [project.urls]
 Homepage = "https://github.com/kadiryonak/RagArt"

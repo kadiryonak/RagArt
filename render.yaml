@@ -1,0 +1,36 @@
+# Render Blueprint — one-click deploy: https://render.com/docs/blueprint-spec
+#
+# ⚠️  RAM: RagArt loads a sentence-transformers embedding model (~470 MB) +
+#     PyTorch + ChromaDB. The Free / Starter tiers (512 MB) OOM on boot.
+#     Use at least the Standard plan (2 GB). For a FREE option, Hugging Face
+#     Spaces gives 16 GB on its free CPU tier — see README "Deployment".
+#
+# Deploy: push this file, then Render Dashboard → New → Blueprint → pick repo.
+services:
+  - type: web
+    name: ragart
+    runtime: docker
+    plan: standard            # 2 GB RAM — do NOT use free/starter (512 MB OOMs)
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Server-side LLM. Or omit and use the in-app BYOK settings (paste a key
+      # in the UI). NEVER hard-code the key here — set it in the dashboard.
+      - key: MODEL_TYPE
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false           # prompts you in the dashboard; not stored in git
+      # One gevent worker keeps the ~470 MB model in a single process.
+      - key: WEB_CONCURRENCY
+        value: "1"
+      # Persist the HuggingFace model cache on the disk below so it isn't
+      # re-downloaded (~470 MB) on every deploy/restart.
+      - key: HF_HOME
+        value: /app/data/.hfcache
+    # Persistent disk: keeps workspaces, uploads, vector index AND the model
+    # cache across deploys. (Requires a paid instance type.)
+    disk:
+      name: ragart-data
+      mountPath: /app/data
+      sizeGB: 2

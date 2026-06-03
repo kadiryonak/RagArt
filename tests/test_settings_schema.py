@@ -157,7 +157,8 @@ class TestSchemaShape:
     def test_schema_exports_all_providers(self):
         schema = get_settings_schema()
         ids = {p["id"] for p in schema["providers"]}
-        assert {"deepseek", "openai", "groq", "ollama", "huggingface", "local"} == ids
+        assert {"deepseek", "openai", "groq", "anthropic",
+                "ollama", "huggingface", "local"} == ids
 
     def test_schema_has_descriptions(self):
         schema = get_settings_schema()

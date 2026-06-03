@@ -159,3 +159,5 @@ eval-history/
 
 skills-lock.json
 .agents/
+
+data/workspaces/
