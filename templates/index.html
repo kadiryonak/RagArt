@@ -2709,7 +2709,7 @@ const FeedbackUI=(()=>{
   function el(tag,attrs,html){const e=document.createElement(tag);if(attrs)for(const k in attrs)e.setAttribute(k,attrs[k]);if(html!=null)e.innerHTML=html;return e;}
   function showConsent(){
     if(LS.get('ragart-consent',false)) return;
-    const bar=el('div',{id:'consentBar',style:'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;max-width:560px;width:calc(100% - 32px);background:var(--panel,#1c1c24);color:var(--text,#eee);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.4);font-size:13px;display:flex;gap:12px;align-items:center'},
+    const bar=el('div',{id:'consentBar',style:'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;max-width:560px;width:calc(100% - 32px);background:var(--surface-elevated,#fff);color:var(--text,#111);border:1px solid var(--border,#ddd);border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.4);font-size:13px;display:flex;gap:12px;align-items:center'},
       '<span style="flex:1">📊 Deneyimi iyileştirmek için <b>anonim</b> kullanım verisi ve isteğe bağlı geri bildirim topluyoruz. Kişisel veri saklanmaz.</span>');
     const ok=el('button',{class:'btn',style:'white-space:nowrap'},'Tamam');
     ok.onclick=()=>{LS.set('ragart-consent',true);bar.remove();};
@@ -2719,7 +2719,7 @@ const FeedbackUI=(()=>{
     if(document.getElementById('fbModal')) return;
     let rating=0;
     const ov=el('div',{id:'fbModal',style:'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center'});
-    const card=el('div',{style:'background:var(--panel,#1c1c24);color:var(--text,#eee);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:20px;max-width:420px;width:calc(100% - 32px)'},
+    const card=el('div',{style:'background:var(--surface-elevated,#fff);color:var(--text,#111);border:1px solid var(--border,#ddd);border-radius:14px;padding:20px;max-width:420px;width:calc(100% - 32px)'},
       '<h3 style="margin:0 0 6px">Geri bildiriminiz</h3><p style="margin:0 0 12px;font-size:13px;opacity:.8">Anonimdir. RagArt\'ı geliştirmemize yardımcı olur.</p>');
     const stars=el('div',{style:'font-size:28px;cursor:pointer;margin-bottom:10px;user-select:none'});
     for(let i=1;i<=5;i++){const s=el('span',{'data-i':i},'☆');s.onclick=()=>{rating=i;[...stars.children].forEach((c,idx)=>c.textContent=idx<rating?'★':'☆');};stars.appendChild(s);}
