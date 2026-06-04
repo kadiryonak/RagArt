@@ -251,6 +251,10 @@ class GroqProvider(BaseLLMProvider):
                 )
                 yield self.generate(prompt, **params)
                 return
+            # SSE responses omit a charset, so requests defaults to
+            # ISO-8859-1 and decode_unicode would turn UTF-8 Turkish bytes
+            # into mojibake ("çözmek" → "Ã§Ã¶zmek"). Pin UTF-8 explicitly.
+            r.encoding = "utf-8"
             for line in r.iter_lines(decode_unicode=True):
                 if not line or not line.startswith("data: "):
                     continue
@@ -353,6 +357,9 @@ class AnthropicProvider(BaseLLMProvider):
                 )
                 yield self.generate(prompt, **params)
                 return
+            # See Groq note: pin UTF-8 so Turkish characters aren't mangled
+            # by requests' ISO-8859-1 fallback for charset-less SSE.
+            r.encoding = "utf-8"
             for line in r.iter_lines(decode_unicode=True):
                 if not line or not line.startswith("data: "):
                     continue

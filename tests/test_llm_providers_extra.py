@@ -15,6 +15,7 @@ from src.llm_providers import (
     AnthropicProvider,
     BaseLLMProvider,
     DeepSeekProvider,
+    GroqProvider,
     HuggingFaceProvider,
     LLMProviderFactory,
     LocalProvider,
@@ -29,6 +30,22 @@ def _ok(content):
     r.status_code = 200
     r.json.return_value = {"choices": [{"message": {"content": content}}]}
     return r
+
+
+class _FakeSSE:
+    """Mimics a streaming requests.Response, including the real charset
+    pitfall: requests defaults `encoding` to ISO-8859-1 for charset-less
+    text/event-stream, and iter_lines(decode_unicode=True) honours it. The
+    providers must pin UTF-8 or Turkish characters become mojibake."""
+
+    def __init__(self, utf8_lines):
+        self.status_code = 200
+        self.encoding = "ISO-8859-1"  # what requests picks for SSE
+        self._raw = [ln.encode("utf-8") for ln in utf8_lines]
+
+    def iter_lines(self, decode_unicode=False):
+        for b in self._raw:
+            yield b.decode(self.encoding) if decode_unicode else b
 
 
 class TestMergeHelper:
@@ -217,6 +234,29 @@ class TestAnthropicProvider:
         mock_post.side_effect = [bad, ok]  # stream fails → generate() fallback
         chunks = list(AnthropicProvider(api_key="k").generate_stream("p"))
         assert chunks == ["tam cevap"]
+
+    @patch("requests.post")
+    def test_stream_decodes_turkish_utf8(self, mock_post):
+        # Regression: SSE without charset → requests' ISO-8859-1 default →
+        # "çözmek" arrived as "Ã§Ã¶zmek". Provider must pin UTF-8.
+        mock_post.return_value = _FakeSSE([
+            'data: {"type":"content_block_delta","delta":'
+            '{"type":"text_delta","text":"çözmek"}}',
+            'data: {"type":"message_stop"}',
+        ])
+        chunks = list(AnthropicProvider(api_key="k").generate_stream("p"))
+        assert chunks == ["çözmek"]
+
+
+class TestGroqStreamEncoding:
+    @patch("requests.post")
+    def test_stream_decodes_turkish_utf8(self, mock_post):
+        mock_post.return_value = _FakeSSE([
+            'data: {"choices":[{"delta":{"content":"gerçekleştir"}}]}',
+            "data: [DONE]",
+        ])
+        chunks = list(GroqProvider(api_key="k").generate_stream("p"))
+        assert chunks == ["gerçekleştir"]
 
 
 class TestLocalProviderContextual:
