@@ -27,6 +27,33 @@ logger = get_logger(__name__)
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
+# ── Per-format chunking ────────────────────────────────────────────────
+# Different document formats have different natural structure, so one-size
+# chunking is suboptimal. Each entry tunes the recursive splitter for that
+# format: `scale` multiplies the manager's base chunk_size, and `separators`
+# are tried in order (earlier = preferred split point). Formats not listed
+# (or documents without a `format` tag) fall back to the manager default,
+# so behaviour is unchanged for anything we don't explicitly optimize.
+#
+#   prose      → sentence-aware ("\n\n" > "\n" > ". " > ...) for pdf/docx/txt
+#   markdown   → split on headings first so a section stays whole
+#   json       → larger chunks so a single record/entry isn't fragmented
+_PROSE_SEPARATORS = ["\n\n", "\n", ". ", "! ", "? ", "; ", ", ", " ", ""]
+_MARKDOWN_SEPARATORS = [
+    "\n## ", "\n### ", "\n#### ", "\n# ", "\n\n", "\n", ". ", " ", "",
+]
+_JSON_SEPARATORS = ["\n\n", "\n", ". ", ", ", " ", ""]
+
+_FORMAT_SPLIT = {
+    "pdf":      {"scale": 1.0, "separators": _PROSE_SEPARATORS},
+    "docx":     {"scale": 1.0, "separators": _PROSE_SEPARATORS},
+    "txt":      {"scale": 1.0, "separators": _PROSE_SEPARATORS},
+    "md":       {"scale": 1.25, "separators": _MARKDOWN_SEPARATORS},
+    "markdown": {"scale": 1.25, "separators": _MARKDOWN_SEPARATORS},
+    "json":     {"scale": 1.5, "separators": _JSON_SEPARATORS},
+}
+
+
 class EmbeddingManager:
     """
     Manages text embeddings and text splitting for the RAG system.
@@ -63,6 +90,8 @@ class EmbeddingManager:
         
         self._embeddings: Optional[HuggingFaceEmbeddings] = None
         self._text_splitter: Optional[RecursiveCharacterTextSplitter] = None
+        # Cache of per-format splitters, lazily built on first use.
+        self._format_splitters: dict = {}
     
     @property
     def embeddings(self) -> HuggingFaceEmbeddings:
@@ -99,16 +128,39 @@ class EmbeddingManager:
             )
         return self._text_splitter
     
+    def _splitter_for(self, fmt: Optional[str]) -> RecursiveCharacterTextSplitter:
+        """Return a recursive splitter tuned for the given document format.
+
+        Falls back to the manager's default splitter for unknown/missing
+        formats, so documents without a `format` tag behave exactly as before.
+        """
+        key = (fmt or "").lower()
+        cfg = _FORMAT_SPLIT.get(key)
+        if cfg is None:
+            return self.text_splitter
+        if key not in self._format_splitters:
+            size = max(1, int(self.chunk_size * cfg.get("scale", 1.0)))
+            self._format_splitters[key] = RecursiveCharacterTextSplitter(
+                chunk_size=size,
+                chunk_overlap=self.chunk_overlap,
+                length_function=len,
+                separators=cfg["separators"],
+            )
+        return self._format_splitters[key]
+
     def split_documents(self, documents: List[Document]) -> List[Document]:
         """
         Split documents into smaller chunks.
-        
-        Uses semantic splitting when split_strategy='semantic',
-        otherwise falls back to recursive character splitting.
-        
+
+        Uses semantic splitting when split_strategy='semantic'. Otherwise uses
+        recursive character splitting with FORMAT-AWARE settings: each document
+        is chunked by a splitter tuned for its `metadata["format"]` (prose for
+        pdf/docx/txt, heading-aware for markdown, larger chunks for json).
+        Documents are processed in order so the chunk sequence is stable.
+
         Args:
             documents: List of Document objects
-            
+
         Returns:
             List of split Document objects
         """
@@ -124,7 +176,10 @@ class EmbeddingManager:
             )
             split_docs = splitter.split_documents(documents)
         else:
-            split_docs = self.text_splitter.split_documents(documents)
+            split_docs = []
+            for doc in documents:
+                splitter = self._splitter_for(doc.metadata.get("format"))
+                split_docs.extend(splitter.split_documents([doc]))
 
         logger.info(f"{StatusEmoji.SUCCESS} Created {len(split_docs)} text chunks")
         return split_docs

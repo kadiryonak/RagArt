@@ -124,7 +124,11 @@ def live(tmp_path_factory):
     mp.setattr(runtime, "rag_registry", reg)
 
     # 5. Warm-start the default workspace (real index build over the seeds).
+    #    Production defers the BM25 build to a background thread; block on it
+    #    here so hybrid retrieval is deterministic for the assertions below.
     runtime.initialize_default_workspace()
+    from src.workspaces import DEFAULT_WORKSPACE_ID as _DEF
+    runtime.get_rag_for(_DEF).ensure_sparse_ready(timeout=30)
     runtime.system.ready = True
     runtime.system.status = "Ready"
 

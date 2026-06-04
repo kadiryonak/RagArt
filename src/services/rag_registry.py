@@ -29,7 +29,7 @@ from src.workspaces import WorkspaceManager
 logger = get_logger(__name__)
 
 # API key gerektiren provider'lar — biri seçili ama key yoksa local'e düşeriz.
-_KEYED_PROVIDERS = ("deepseek", "openai", "groq", "huggingface")
+_KEYED_PROVIDERS = ("deepseek", "openai", "groq", "anthropic", "huggingface")
 
 
 class RagRegistry:
@@ -65,6 +65,10 @@ class RagRegistry:
             model_type=model_type,
             api_key=api_key,
             chroma_db_path=str(persist_path),
+            # Warm-start should never block on disk re-extraction/OCR — build
+            # the BM25 retriever in the background so the workspace answers
+            # immediately (dense-only) instead of returning 503.
+            defer_sparse_build=True,
         )
         rag.initialize()
         return rag

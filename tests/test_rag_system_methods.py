@@ -123,6 +123,54 @@ class TestSelectRetriever:
         assert len(made) == 1            # RerankedRetriever built once
 
 
+# ── deferred sparse/BM25 build (no-503 startup) ────────────────────────
+
+
+class TestSparseBuild:
+    def test_sync_build_runs_inline(self, rag, monkeypatch):
+        calls = []
+        monkeypatch.setattr(rag, "_reload_split_chunks", lambda: ["chunk"])
+        monkeypatch.setattr(
+            rag, "_build_retrievers", lambda docs: calls.append(docs)
+        )
+        rag._build_sparse_retrievers(defer=False)
+        # Synchronous: retrievers built before the call returns.
+        assert calls == [["chunk"]]
+
+    def test_deferred_build_runs_in_background(self, rag, monkeypatch):
+        import threading
+
+        started = threading.Event()
+        release = threading.Event()
+        built = []
+
+        def slow_reload():
+            started.set()
+            release.wait(2)
+            return ["chunk"]
+
+        monkeypatch.setattr(rag, "_reload_split_chunks", slow_reload)
+        monkeypatch.setattr(rag, "_build_retrievers", lambda docs: built.append(docs))
+
+        rag._build_sparse_retrievers(defer=True)
+        # Returned immediately while the build is still blocked.
+        assert started.wait(2)
+        assert built == []
+        # Let it finish and confirm ensure_sparse_ready joins it.
+        release.set()
+        rag.ensure_sparse_ready(timeout=2)
+        assert built == [["chunk"]]
+
+    def test_deferred_build_swallows_errors(self, rag, monkeypatch):
+        def boom():
+            raise RuntimeError("disk gone")
+
+        monkeypatch.setattr(rag, "_reload_split_chunks", boom)
+        # Must not raise — a failed background build just stays dense-only.
+        rag._build_sparse_retrievers(defer=False)
+        assert rag._sparse_retriever is None
+
+
 # ── _build_memory ──────────────────────────────────────────────────────
 
 
