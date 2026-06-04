@@ -566,6 +566,8 @@ input[type=range]{flex:1;accent-color:var(--accent)}
 .dev-info-card p{font-size:13px;color:var(--text-secondary);line-height:1.55;margin:0 0 8px}
 .dev-info-card p:last-child{margin-bottom:0}
 .dev-info-card b{color:var(--text)}
+.dev-save-row{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.dev-save-row .hint{font-size:12.5px;color:var(--text-muted)}
 .byok-note{
   display:flex;gap:8px;align-items:flex-start;padding:9px 11px;margin-bottom:12px;
   background:var(--success-soft);border-radius:var(--radius-sm);
@@ -1084,6 +1086,14 @@ input[type=range]{flex:1;accent-color:var(--accent)}
                 <p>Kapalıyken yalnızca Sağlayıcı ve Güvenlik ayarları görünür; sistem optimum varsayılanlarla çalışır. Açınca tüm ileri ayar bölümleri görünür.</p>
               </div>
               <div class="toggle" id="devToggle" role="switch" tabindex="0" aria-label="Geliştirici Modu"></div>
+            </div>
+
+            <div class="dev-save-row">
+              <button class="btn accent" id="devSaveBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Kaydet
+              </button>
+              <span class="hint">Modu kaydedin — arayüz seçili moda göre güncellenir.</span>
             </div>
 
             <div class="dev-info-card hide" id="devInfoCard">
@@ -2633,6 +2643,18 @@ function applyDevModeUI(){
   const card=$('#devInfoCard');
   if(card) card.classList.toggle('hide',!state.devMode);
 }
+/* Explicit "Kaydet" — persist the mode and refresh every part of the UI that
+   depends on it: settings sections, prompt list, and (if open) the chat thread
+   so raw telemetry visibility updates on already-rendered answers. */
+function saveDevSettings(){
+  LS.set('ragart-devmode',state.devMode);
+  saveSettings();
+  refreshPromptSelect();
+  applyDevModeUI();
+  if($('#chatThread')) renderThread();
+  updateStatusBar();
+  toast('success','Kaydedildi','Arayüz '+(state.devMode?'geliştirici':'standart')+' moduna göre güncellendi.');
+}
 function refreshPromptSelect(){
   const sc=state.schema||MOCK_SCHEMA;
   // Backend schema has no `advanced` flag — treat multi-call/multi-query
@@ -2887,6 +2909,7 @@ function bindEvents(){
   };
   dt.onclick=toggleDev;
   dt.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleDev(); } };
+  $('#devSaveBtn').onclick=saveDevSettings;
   $('#cacheClearBtn').onclick=async()=>{
     $('#cacheClearBtn').disabled=true;
     await API.cacheClear();
