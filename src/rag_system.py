@@ -2,6 +2,7 @@
 Main RAG (Retrieval-Augmented Generation) system implementation.
 """
 
+import threading
 from typing import Any, Dict, List, Optional
 
 import chromadb
@@ -128,22 +129,29 @@ class TurkishRAGSystem:
         model_type: str = "local",
         api_key: Optional[str] = None,
         chroma_db_path: str = "./chroma_db",
-        embedding_model: Optional[str] = None
+        embedding_model: Optional[str] = None,
+        defer_sparse_build: bool = False,
     ):
         """
         Initialize the RAG system.
-        
+
         Args:
             data_folder: Path to the folder containing JSON data files
             model_type: LLM provider type ('deepseek', 'openai', 'ollama', 'local')
             api_key: API key for the LLM provider (if required)
             chroma_db_path: Path for ChromaDB persistence
             embedding_model: Custom embedding model name (optional)
+            defer_sparse_build: When True, the (slow) BM25/hybrid retriever is
+                built in a background thread on warm-start so the workspace is
+                queryable immediately (dense-only) instead of blocking on disk
+                re-extraction/OCR. Production sets this; tests leave it False
+                so retrieval is fully built synchronously and deterministic.
         """
         self.data_folder = data_folder
         self.model_type = model_type
         self.api_key = api_key
         self.chroma_db_path = chroma_db_path
+        self._defer_sparse_build = defer_sparse_build
         
         # Initialize ChromaDB client
         self.chroma_client = chromadb.PersistentClient(path=chroma_db_path)
@@ -187,6 +195,9 @@ class TurkishRAGSystem:
         self._sparse_retriever: Optional[BaseRetriever] = None
         self._hybrid_retriever: Optional[BaseRetriever] = None
         self._reranker_cache: Dict[str, RerankedRetriever] = {}
+        # Background BM25 build coordination (see _build_sparse_retrievers).
+        self._sparse_lock = threading.Lock()
+        self._sparse_thread: Optional[threading.Thread] = None
         
         # System prompt template
         self.system_prompt = TURKISH_SYSTEM_PROMPT
@@ -375,9 +386,19 @@ class TurkishRAGSystem:
                 doc_count = collection.count()
 
                 if doc_count > 0:
-                    # BM25 is in-memory only — rebuild from the source JSON files
-                    # so dense/sparse/hybrid all stay coherent.
-                    self._build_retrievers(self._reload_split_chunks())
+                    # The dense retriever wraps the already-persisted Chroma
+                    # collection — it is ready instantly, so the workspace can
+                    # answer queries right now. The BM25 (sparse) retriever must
+                    # re-read every source file from disk to rebuild its
+                    # in-memory corpus, which can include OCR of scanned PDFs
+                    # (seconds per page). Doing that inline blocked startup for
+                    # tens of seconds and made early /ask requests return 503.
+                    # So: build dense up front, then build sparse/hybrid in the
+                    # background (when deferred). Retrieval auto-selects
+                    # dense-only until the hybrid retriever appears.
+                    self._dense_retriever = DenseRetriever(self.vector_store)
+                    self._reranker_cache.clear()
+                    self._build_sparse_retrievers(defer=self._defer_sparse_build)
                     logger.info(f"{StatusEmoji.SUCCESS} Loaded existing collection with {doc_count} documents")
                     return True
                 else:
@@ -397,6 +418,51 @@ class TurkishRAGSystem:
         if not documents:
             return []
         return self.embedding_manager.split_documents(documents)
+
+    def _build_sparse_retrievers(self, *, defer: bool) -> None:
+        """Build the BM25/hybrid retrievers from the source files on disk.
+
+        This re-reads every file (the expensive part — scanned PDFs may be
+        OCR'd), so it is optionally run in a daemon thread. While it runs,
+        `_select_retriever` falls back to dense-only (hybrid is None), so the
+        workspace stays fully queryable; the hybrid retriever simply appears a
+        few seconds later. Call `ensure_sparse_ready()` to block until done.
+        """
+        def _work() -> None:
+            try:
+                self._build_retrievers(self._reload_split_chunks())
+            except Exception as e:  # never let a background build crash startup
+                logger.warning(
+                    f"{StatusEmoji.WARNING} Sparse/hybrid retriever build failed "
+                    f"({type(e).__name__}: {e}) — staying dense-only."
+                )
+
+        if not defer:
+            _work()
+            return
+
+        with self._sparse_lock:
+            if self._sparse_thread is not None and self._sparse_thread.is_alive():
+                return  # a build is already in flight
+            self._sparse_thread = threading.Thread(
+                target=_work, name="ragart-bm25-build", daemon=True
+            )
+            self._sparse_thread.start()
+        logger.info(
+            f"{StatusEmoji.INFO} Building sparse/hybrid retriever in background "
+            f"— answering dense-only until ready."
+        )
+
+    def ensure_sparse_ready(self, timeout: Optional[float] = None) -> bool:
+        """Block until the background BM25 build finishes (or `timeout`).
+
+        Returns True if the sparse retriever is ready. Tests and any code that
+        needs deterministic hybrid retrieval can call this after init/reindex.
+        """
+        t = self._sparse_thread
+        if t is not None and t.is_alive():
+            t.join(timeout)
+        return self._sparse_retriever is not None
 
     def _build_retrievers(self, split_docs: List[Document]) -> None:
         """Vector store hazırken dense+sparse+hybrid retriever'ları kur.
@@ -568,13 +634,18 @@ class TurkishRAGSystem:
         """
         if not documents:
             return 0.0
-        
-        total_score = 0.0
-        for doc in documents:
-            score = calculate_word_overlap(question, doc.page_content)
-            total_score += score
-        
-        return total_score / len(documents)
+
+        # Use the BEST-matching document, not the mean. A single strongly
+        # relevant chunk is sufficient grounding for an answer; averaging let
+        # distractor chunks dilute a good hit below the gate threshold — e.g.
+        # a name query ("Kadir kimdir?") that retrieves the right CV chunk
+        # plus a few unrelated ones would score ~0.12 (mean) and be rejected,
+        # even though one chunk matches at 0.5. max() asks the right question:
+        # "is there at least one relevant document?"
+        return max(
+            (calculate_word_overlap(question, doc.page_content) for doc in documents),
+            default=0.0,
+        )
     
     def _build_memory(
         self,

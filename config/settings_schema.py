@@ -39,6 +39,12 @@ PROVIDER_PARAMS: Dict[str, Dict[str, Any]] = {
         **COMMON_LLM_PARAMS,
         "max_tokens": {"type": "int", "min": 64, "max": 8192, "default": 800, "step": 64},
     },
+    "anthropic": {
+        # NB: Claude 4.x rejects temperature + top_p together, so we expose
+        # only temperature here (the provider sends just one anyway).
+        "temperature": COMMON_LLM_PARAMS["temperature"],
+        "max_tokens": {"type": "int", "min": 64, "max": 8192, "default": 1024, "step": 64},
+    },
     "ollama": {
         **COMMON_LLM_PARAMS,
         "num_ctx":        {"type": "int",   "min": 512, "max": 32768, "default": 2048, "step": 512},
@@ -57,6 +63,7 @@ PROVIDER_DEFAULT_MODELS: Dict[str, str] = {
     "deepseek": "deepseek-chat",
     "openai": "gpt-4o-mini",
     "groq": "llama-3.3-70b-versatile",
+    "anthropic": "claude-haiku-4-5-20251001",
     "ollama": "llama3.1:8b",
     "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
     "local": "context-aware-fallback",
@@ -67,6 +74,7 @@ PROVIDER_NEEDS_KEY: Dict[str, bool] = {
     "deepseek": True,
     "openai": True,
     "groq": True,
+    "anthropic": True,
     "ollama": False,
     "huggingface": True,
     "local": False,
@@ -305,7 +313,7 @@ def get_settings_schema() -> Dict[str, Any]:
                 "default_model": PROVIDER_DEFAULT_MODELS[pid],
                 "params": PROVIDER_PARAMS[pid],
             }
-            for pid in ("deepseek", "openai", "groq", "ollama", "huggingface", "local")
+            for pid in ("deepseek", "openai", "groq", "anthropic", "ollama", "huggingface", "local")
         ],
         "retrieval_strategies": [
             {"id": "auto",   "label": "Otomatik (önerilen)",

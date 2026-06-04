@@ -36,6 +36,10 @@ class Settings:
         return os.getenv("GROQ_API_KEY")
 
     @property
+    def ANTHROPIC_API_KEY(self) -> Optional[str]:
+        return os.getenv("ANTHROPIC_API_KEY")
+
+    @property
     def MODEL_TYPE(self) -> str:
         return os.getenv("MODEL_TYPE", "local")
     
@@ -76,6 +80,8 @@ class Settings:
             return self.HUGGINGFACE_API_KEY
         elif self.MODEL_TYPE == "groq":
             return self.GROQ_API_KEY
+        elif self.MODEL_TYPE == "anthropic":
+            return self.ANTHROPIC_API_KEY
         return None
     
     @classmethod

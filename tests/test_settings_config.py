@@ -34,3 +34,48 @@ class TestGetApiKey:
         monkeypatch.setenv("MODEL_TYPE", "groq")
         monkeypatch.delenv("GROQ_API_KEY", raising=False)
         assert Settings().get_api_key() is None
+
+    def test_huggingface_model_returns_hf_key(self, monkeypatch):
+        monkeypatch.setenv("MODEL_TYPE", "huggingface")
+        monkeypatch.setenv("HUGGINGFACE_API_KEY", "hf_unit_test")
+        assert Settings().get_api_key() == "hf_unit_test"
+
+    def test_anthropic_model_returns_anthropic_key(self, monkeypatch):
+        monkeypatch.setenv("MODEL_TYPE", "anthropic")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-unit-test")
+        assert Settings().get_api_key() == "sk-ant-unit-test"
+
+    def test_unknown_model_returns_none(self, monkeypatch):
+        monkeypatch.setenv("MODEL_TYPE", "ollama")
+        assert Settings().get_api_key() is None
+
+    def test_default_model_type_is_local(self, monkeypatch):
+        monkeypatch.delenv("MODEL_TYPE", raising=False)
+        assert Settings().MODEL_TYPE == "local"
+
+
+class TestValidateApiKey:
+    def test_none_is_invalid(self):
+        assert Settings.validate_api_key(None) is False
+
+    def test_non_string_is_invalid(self):
+        assert Settings.validate_api_key(12345) is False
+
+    def test_valid_deepseek_key(self):
+        assert Settings.validate_api_key("sk-" + "a" * 40, "deepseek") is True
+
+    def test_short_deepseek_key_invalid(self):
+        assert Settings.validate_api_key("sk-short", "deepseek") is False
+
+    def test_valid_openai_key(self):
+        assert Settings.validate_api_key("sk-" + "b" * 45, "openai") is True
+
+    def test_openai_requires_longer_key(self):
+        # 35 chars total < 40 → invalid for openai
+        assert Settings.validate_api_key("sk-" + "c" * 32, "openai") is False
+
+    def test_unknown_service_is_invalid(self):
+        assert Settings.validate_api_key("sk-" + "d" * 40, "groq") is False
+
+    def test_whitespace_is_stripped(self):
+        assert Settings.validate_api_key("  sk-" + "e" * 40 + "  ", "deepseek") is True

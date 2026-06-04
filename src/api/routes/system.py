@@ -3,11 +3,11 @@ settings schema, data-info, self-test."""
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify, request, send_from_directory
+from flask import Blueprint, Response, current_app, jsonify, request, send_from_directory
 
 from config.settings_schema import get_settings_schema
 from src.api import runtime
-from src.observability import metrics
+from src.observability import metrics, render_prometheus
 from src.workspaces import DEFAULT_WORKSPACE_ID
 
 bp = Blueprint("system", __name__)
@@ -63,6 +63,16 @@ def metrics_endpoint():
     single `pip install`. Point a dashboard at it or just curl it.
     """
     return jsonify(metrics.snapshot())
+
+
+@bp.route("/metrics/prometheus")
+def metrics_prometheus():
+    """Prometheus text exposition — scrape target for Prometheus + Grafana.
+
+    The JSON /metrics stays the zero-dependency default; this endpoint serves
+    the same data in Prometheus format. See monitoring/ for a ready stack.
+    """
+    return Response(render_prometheus(), mimetype="text/plain; version=0.0.4")
 
 
 @bp.route("/settings/schema")

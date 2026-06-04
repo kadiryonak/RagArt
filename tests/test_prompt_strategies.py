@@ -14,11 +14,13 @@ from src.prompt_strategies import (
     CustomStrategy,
     DirectStrategy,
     FewShotStrategy,
+    HyDEStrategy,
     MultiQueryStrategy,
     PromptStrategyFactory,
     QueryRewriteStrategy,
     RoleBasedStrategy,
     SelfRefineStrategy,
+    StepBackStrategy,
     StrategyContext,
 )
 
@@ -297,6 +299,98 @@ class TestMultiQuery:
     def test_is_multi_query_flag(self):
         assert MultiQueryStrategy().is_multi_query
         assert not DirectStrategy().is_multi_query
+
+
+# ----- HyDE -----
+
+
+class TestHyDE:
+    def test_returns_original_plus_hypothetical_doc(self):
+        s = HyDEStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = (
+            "Kadir Yönak bir yazılım geliştiricidir. Yapay zeka üzerine çalışır."
+        )
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        out = s.generate_query_variations("Kadir kimdir?", ctx)
+        assert out[0] == "Kadir kimdir?"
+        assert "yazılım geliştiricidir" in out[1]
+
+    def test_llm_failure_falls_back_to_original(self):
+        s = HyDEStrategy()
+        llm = MagicMock()
+        llm.generate.side_effect = RuntimeError("boom")
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.generate_query_variations("q", ctx) == ["q"]
+
+    def test_empty_doc_falls_back_to_original(self):
+        s = HyDEStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = "   "
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.generate_query_variations("q", ctx) == ["q"]
+
+    def test_build_prompt_uses_direct_template(self):
+        s = HyDEStrategy()
+        p = s.build_prompt(question="X?", context="ctx", memory_context="")
+        assert "X?" in p and "ctx" in p
+
+    def test_build_prompt_with_memory(self):
+        s = HyDEStrategy()
+        p = s.build_prompt(question="X?", context="c", memory_context="önceki tur")
+        assert "önceki tur" in p
+
+    def test_flags(self):
+        s = HyDEStrategy()
+        assert s.is_multi_query and s.is_multi_call and s.is_advanced
+
+
+# ----- Step-back -----
+
+
+class TestStepBack:
+    def test_returns_original_plus_stepback(self):
+        s = StepBackStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = "Python'da list comprehension nedir?"
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        out = s.generate_query_variations("list comprehension hız farkı?", ctx)
+        assert out[0] == "list comprehension hız farkı?"
+        assert "list comprehension nedir" in out[1]
+
+    def test_strips_label_prefix(self):
+        s = StepBackStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = "Step-back soru: Genel hali nedir?"
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        out = s.generate_query_variations("spesifik?", ctx)
+        assert out[1] == "Genel hali nedir?"
+
+    def test_llm_failure_falls_back(self):
+        s = StepBackStrategy()
+        llm = MagicMock()
+        llm.generate.side_effect = RuntimeError("boom")
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.generate_query_variations("q", ctx) == ["q"]
+
+    def test_identical_stepback_dropped(self):
+        s = StepBackStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = "q"
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.generate_query_variations("q", ctx) == ["q"]
+
+    def test_empty_response_falls_back(self):
+        s = StepBackStrategy()
+        llm = MagicMock()
+        llm.generate.return_value = "\n\n  \n"
+        ctx = StrategyContext(llm=llm, retrieve_fn=lambda q, k: [])
+        assert s.generate_query_variations("q", ctx) == ["q"]
+
+    def test_build_prompt(self):
+        s = StepBackStrategy()
+        p = s.build_prompt(question="X?", context="ctx")
+        assert "X?" in p and "ctx" in p
 
 
 # ----- Integration through /ask -----

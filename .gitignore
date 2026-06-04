@@ -113,7 +113,7 @@ models/
 
 # Local Claude Code config / session data
 .claude/
-
+.agents/
 # Generated evaluation reports
 tests/evaluation/reports/*.md
 tests/evaluation/reports/*.json
@@ -159,3 +159,15 @@ eval-history/
 
 skills-lock.json
 .agents/
+
+data/workspaces/
+data/feedback.jsonl
+data/.extract_cache/
+
+# Node / Playwright
+node_modules/
+playwright-report/
+test-results/
+tests/e2e/.explore-state.json
+tests/e2e/explore-report.json
+tests/e2e/explore-shots/

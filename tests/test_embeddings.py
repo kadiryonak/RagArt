@@ -166,5 +166,70 @@ class TestTextSplitter:
             assert doc.metadata["custom_key"] == "custom_value"
 
 
+class TestPerFormatChunking:
+    """Format-aware splitting: each format gets a tuned recursive splitter."""
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        with patch("src.embeddings.HuggingFaceEmbeddings") as mock_hf:
+            mock_hf.return_value = Mock()
+            yield mock_hf
+
+    def test_unknown_format_uses_default_splitter(self, mock_embeddings):
+        from src.embeddings import EmbeddingManager
+        m = EmbeddingManager(chunk_size=500)
+        # No format / unknown format → the shared default splitter instance.
+        assert m._splitter_for(None) is m.text_splitter
+        assert m._splitter_for("") is m.text_splitter
+        assert m._splitter_for("xlsx") is m.text_splitter
+
+    def test_markdown_splitter_is_heading_aware(self, mock_embeddings):
+        from src.embeddings import EmbeddingManager
+        m = EmbeddingManager(chunk_size=400)
+        md = m._splitter_for("md")
+        assert md is not m.text_splitter
+        assert "\n## " in md._separators          # splits on headings first
+        assert md._chunk_size == 500              # 400 * 1.25 scale
+
+    def test_json_splitter_uses_larger_chunks(self, mock_embeddings):
+        from src.embeddings import EmbeddingManager
+        m = EmbeddingManager(chunk_size=400)
+        assert m._splitter_for("json")._chunk_size == 600  # 400 * 1.5
+
+    def test_pdf_splitter_is_prose_and_cached(self, mock_embeddings):
+        from src.embeddings import EmbeddingManager
+        m = EmbeddingManager(chunk_size=400)
+        pdf = m._splitter_for("pdf")
+        assert pdf._chunk_size == 400             # scale 1.0
+        assert ". " in pdf._separators            # sentence-aware prose
+        assert m._splitter_for("pdf") is pdf      # cached, not rebuilt
+
+    def test_split_documents_routes_by_format(self, mock_embeddings):
+        from src.embeddings import EmbeddingManager
+        m = EmbeddingManager(chunk_size=120, chunk_overlap=10)
+
+        used = {}
+        real = m._splitter_for
+
+        def spy(fmt):
+            s = real(fmt)
+            used[fmt] = s
+            return s
+
+        m._splitter_for = spy
+
+        docs = [
+            Document(page_content="# Başlık\n\n" + "Madde. " * 40,
+                     metadata={"source": "a.md", "format": "md"}),
+            Document(page_content="Düz metin cümlesi. " * 40,
+                     metadata={"source": "b.txt", "format": "txt"}),
+        ]
+        out = m.split_documents(docs)
+        assert len(out) > 2                        # both were chunked
+        assert set(used) == {"md", "txt"}          # each format routed
+        # Metadata is preserved through splitting.
+        assert {d.metadata["format"] for d in out} == {"md", "txt"}
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

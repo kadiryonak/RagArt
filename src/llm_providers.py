@@ -251,6 +251,10 @@ class GroqProvider(BaseLLMProvider):
                 )
                 yield self.generate(prompt, **params)
                 return
+            # SSE responses omit a charset, so requests defaults to
+            # ISO-8859-1 and decode_unicode would turn UTF-8 Turkish bytes
+            # into mojibake ("çözmek" → "Ã§Ã¶zmek"). Pin UTF-8 explicitly.
+            r.encoding = "utf-8"
             for line in r.iter_lines(decode_unicode=True):
                 if not line or not line.startswith("data: "):
                     continue
@@ -266,6 +270,113 @@ class GroqProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"{StatusEmoji.ERROR} Groq stream error: {e}")
             yield f"Groq connection error: {e}"
+
+    def generate_general(self, question: str, **params: Any) -> str:
+        general_prompt = (
+            "Sen Türkçe konuşan bir yapay zeka asistanısın. Kullanıcının sorusunu "
+            "Türkçe, faydalı ve özlü şekilde yanıtla.\n\n"
+            f"Soru: {question}\n\nYanıt:"
+        )
+        return self.generate(general_prompt, **params)
+
+
+class AnthropicProvider(BaseLLMProvider):
+    """Anthropic (Claude) provider — Messages API.
+
+    Uses the REST API directly via `requests` (no SDK dependency), matching
+    the other providers. Note: Anthropic requires `max_tokens` on every call
+    and uses `x-api-key` + `anthropic-version` headers (not Bearer).
+    """
+
+    API_URL = "https://api.anthropic.com/v1/messages"
+    API_VERSION = "2023-06-01"
+
+    def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001"):
+        self.api_key = api_key
+        self.model = model
+        # NB: Claude 4.x rejects temperature + top_p together — we send only
+        # one (see _payload). Default to temperature.
+        self.defaults: Dict[str, Any] = {
+            "temperature": 0.1,
+            "max_tokens": 1024,
+        }
+        self.timeout = 60
+
+    def _headers(self) -> Dict[str, str]:
+        return {
+            "x-api-key": self.api_key,
+            "anthropic-version": self.API_VERSION,
+            "content-type": "application/json",
+        }
+
+    def _payload(self, prompt: str, params: Dict[str, Any], *, stream: bool) -> Dict[str, Any]:
+        cfg = _merge(self.defaults, params)
+        payload: Dict[str, Any] = {
+            "model": params.get("model", self.model),
+            "max_tokens": cfg.get("max_tokens", 1024),   # required by the API
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        # Anthropic rejects temperature + top_p together — send exactly one,
+        # preferring temperature.
+        if cfg.get("temperature") is not None:
+            payload["temperature"] = cfg["temperature"]
+        elif cfg.get("top_p") is not None:
+            payload["top_p"] = cfg["top_p"]
+        if stream:
+            payload["stream"] = True
+        return payload
+
+    def generate(self, prompt: str, **params: Any) -> str:
+        try:
+            r = requests.post(
+                self.API_URL, headers=self._headers(),
+                json=self._payload(prompt, params, stream=False), timeout=self.timeout,
+            )
+            if r.status_code != 200:
+                logger.error(f"{StatusEmoji.ERROR} Anthropic API {r.status_code}: {r.text[:200]}")
+                return f"Anthropic API error: {r.status_code}"
+            blocks = r.json().get("content", [])
+            return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        except Exception as e:
+            logger.error(f"{StatusEmoji.ERROR} Anthropic error: {e}")
+            return f"Anthropic connection error: {e}"
+
+    def generate_stream(self, prompt: str, **params: Any) -> Iterator[str]:
+        """Token-by-token via Anthropic's SSE stream. Falls back to
+        generate() (single chunk) on any non-200."""
+        try:
+            r = requests.post(
+                self.API_URL, headers=self._headers(),
+                json=self._payload(prompt, params, stream=True),
+                timeout=self.timeout, stream=True,
+            )
+            if r.status_code != 200:
+                logger.warning(
+                    f"{StatusEmoji.WARNING} Anthropic stream {r.status_code} — "
+                    "falling back to non-streamed generate()"
+                )
+                yield self.generate(prompt, **params)
+                return
+            # See Groq note: pin UTF-8 so Turkish characters aren't mangled
+            # by requests' ISO-8859-1 fallback for charset-less SSE.
+            r.encoding = "utf-8"
+            for line in r.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                try:
+                    obj = json.loads(data)
+                except ValueError:
+                    continue
+                if obj.get("type") == "content_block_delta":
+                    delta = obj.get("delta", {})
+                    if delta.get("type") == "text_delta" and delta.get("text"):
+                        yield delta["text"]
+                elif obj.get("type") == "message_stop":
+                    break
+        except Exception as e:
+            logger.error(f"{StatusEmoji.ERROR} Anthropic stream error: {e}")
+            yield f"Anthropic connection error: {e}"
 
     def generate_general(self, question: str, **params: Any) -> str:
         general_prompt = (
@@ -421,12 +532,13 @@ class LLMProviderFactory:
         "deepseek": DeepSeekProvider,
         "openai": OpenAIProvider,
         "groq": GroqProvider,
+        "anthropic": AnthropicProvider,
         "huggingface": HuggingFaceProvider,
         "ollama": OllamaProvider,
         "local": LocalProvider,
     }
 
-    PROVIDERS_REQUIRING_KEY = {"deepseek", "openai", "groq", "huggingface"}
+    PROVIDERS_REQUIRING_KEY = {"deepseek", "openai", "groq", "anthropic", "huggingface"}
 
     @classmethod
     def create(

@@ -187,6 +187,43 @@ class Metrics:
 metrics = Metrics()
 
 
+def render_prometheus(snapshot: Optional[Dict[str, Any]] = None) -> str:
+    """Render a metrics snapshot in Prometheus text exposition format.
+
+    Lets Prometheus scrape /metrics/prometheus and Grafana chart it, without
+    pulling in the prometheus_client dependency (the JSON /metrics stays the
+    zero-dep default). See monitoring/ for a ready Prometheus + Grafana stack.
+    """
+    snap = snapshot if snapshot is not None else metrics.snapshot()
+    lines: list[str] = []
+
+    def metric(name: str, value: Any, help_: str, typ: str = "gauge", labels: str = ""):
+        lines.append(f"# HELP ragart_{name} {help_}")
+        lines.append(f"# TYPE ragart_{name} {typ}")
+        lines.append(f"ragart_{name}{labels} {value}")
+
+    metric("uptime_seconds", snap["uptime_seconds"], "Process uptime in seconds")
+    metric("requests_total", snap["requests_total"],
+           "Total HTTP requests handled", typ="counter")
+    metric("errors_5xx_total", snap["errors_5xx"],
+           "Total 5xx responses", typ="counter")
+
+    # Per-status as a labelled counter.
+    if snap["requests_by_status"]:
+        lines.append("# HELP ragart_requests_by_status_total Requests by status class")
+        lines.append("# TYPE ragart_requests_by_status_total counter")
+        for status, n in sorted(snap["requests_by_status"].items()):
+            lines.append(f'ragart_requests_by_status_total{{status="{status}"}} {n}')
+
+    lat = snap["latency_seconds"]
+    metric("latency_seconds_p50", lat["p50"], "Request latency p50 (s)")
+    metric("latency_seconds_p95", lat["p95"], "Request latency p95 (s)")
+    metric("latency_seconds_p99", lat["p99"], "Request latency p99 (s)")
+    metric("latency_seconds_max", lat["max"], "Request latency max (s)")
+
+    return "\n".join(lines) + "\n"
+
+
 # ─── Flask middleware ──────────────────────────────────────────────────
 
 

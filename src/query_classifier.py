@@ -46,7 +46,11 @@ ADAPTIVE_CONFIGS = {
         k=0, retrieval_strategy=None, rerank=False, skip_retrieval=True,
     ),
     QueryComplexity.SIMPLE: AdaptiveConfig(
-        k=2, retrieval_strategy="dense", rerank=False,
+        # Hybrid (not dense-only): short queries are often proper nouns
+        # ("Kadir kimdir?", "Python nedir?") where dense embeddings miss the
+        # rare token but BM25 exact-matches it. k=4 gives a little headroom
+        # without pulling in noise. retrieval_strategy=None → hybrid if avail.
+        k=4, retrieval_strategy=None, rerank=False,
     ),
     QueryComplexity.MODERATE: AdaptiveConfig(
         k=5, retrieval_strategy=None, rerank=False,  # None → hybrid if available

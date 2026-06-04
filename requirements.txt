@@ -32,6 +32,13 @@ numpy>=1.24.0
 flask>=2.3.0
 flask-cors>=4.0.0
 
+# Production WSGI servers
+# - waitress: cross-platform (Windows + Linux), used by `ragart --production`
+# - gunicorn + gevent: Linux/Docker/PaaS, SSE-friendly (see gunicorn.conf.py)
+waitress>=3.0.0
+gunicorn>=21.2.0
+gevent>=23.9.0
+
 # Request validation (API schemas)
 pydantic>=2.0.0
 
