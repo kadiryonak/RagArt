@@ -29,8 +29,8 @@ python scripts/agent_explore.py --headed     # watch it click around
 python scripts/agent_explore.py --reset      # forget history, explore fresh
 ```
 
-- Visited elements are remembered in `e2e/.explore-state.json`, so each run
-  only tests **new** interactions.
+- Visited elements are remembered in `tests/e2e/.explore-state.json`, so each
+  run only tests **new** interactions.
 - A per-run report (actions + any JS/console errors) lands in
-  `e2e/explore-report.json`; screenshots in `e2e/explore-shots/`.
+  `tests/e2e/explore-report.json`; screenshots in `tests/e2e/explore-shots/`.
 - Exits non-zero if the crawl surfaces JS errors (CI-friendly).

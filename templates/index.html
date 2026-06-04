@@ -245,7 +245,7 @@ a:hover{text-decoration:underline}
 .panel{background:var(--surface-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
 
 /* ---- chat layout (ChatGPT / NotebookLM style) ---- */
-.chat-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px);gap:20px;align-items:start}
+.chat-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,460px);gap:20px;align-items:start}
 .chat-col{display:flex;flex-direction:column;height:calc(100vh - var(--header-h) - 150px);min-height:440px;padding:0;overflow:hidden}
 .chat-head{display:flex;align-items:center;justify-content:space-between;
   padding:13px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -280,6 +280,8 @@ a:hover{text-decoration:underline}
 .send-btn{width:46px;height:46px;flex-shrink:0;padding:0;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm)}
 .send-btn svg{width:18px;height:18px}
 .sources-panel{position:sticky;top:calc(var(--header-h) + 16px);max-height:calc(100vh - var(--header-h) - 150px);overflow-y:auto}
+.sources-panel .sources-list{max-height:none}
+.sources-panel .source-preview{font-size:13px;-webkit-line-clamp:6;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
 
 /* history entry modal */
 .hist-opts{display:flex;flex-direction:column;gap:10px;margin-top:6px}
@@ -1419,8 +1421,9 @@ function openModal(html,opts){
   opts=opts||{};
   const ov=document.createElement('div');
   ov.className='modal-overlay';
+  if(opts.persistent) ov.dataset.persistent='1';   // can't be dismissed without choosing
   ov.innerHTML='<div class="modal'+(opts.cls?' '+opts.cls:'')+'" role="dialog" aria-modal="true" style="position:relative">'+html+'</div>';
-  ov.addEventListener('mousedown',e=>{ if(e.target===ov) closeModal(ov); });
+  if(!opts.persistent) ov.addEventListener('mousedown',e=>{ if(e.target===ov) closeModal(ov); });
   $('#modalRoot').appendChild(ov);
   const f=ov.querySelector('input,textarea,button');
   if(f) setTimeout(()=>f.focus(),30);
@@ -1429,7 +1432,11 @@ function openModal(html,opts){
 function closeModal(ov){ if(ov&&ov.parentNode) ov.remove(); }
 function closeTopModal(){
   const all=$$('.modal-overlay');
-  if(all.length){ closeModal(all[all.length-1]); return true; }
+  if(all.length){
+    const top=all[all.length-1];
+    if(top.dataset.persistent) return true;  // mandatory modal — swallow Esc, don't close
+    closeModal(top); return true;
+  }
   return false;
 }
 
@@ -1796,7 +1803,7 @@ function router(){
     else { go('#/'); return; }
   } else if(h==='#/settings'){ view='settings'; }
   else if(h==='#/help'){ view='help'; }
-  else { view='landing'; state.activeWorkspace=null; }
+  else { view='landing'; state.activeWorkspace=null; state._historyOfferedFor=null; }
 
   if(view!=='settings'&&view!=='help') state.lastNonSettingsHash=h;
 
@@ -1998,17 +2005,16 @@ function maybeOfferHistory(){
 
   const turns=saved.filter(m=>m.role==='user').length;
   const ov=openModal(
-    '<button class="icon-btn modal-x" data-x aria-label="Kapat">'+ICON.x+'</button>'+
     '<h3>Önceki sohbet bulundu</h3>'+
-    '<div class="m-sub">Bu çalışma alanında <b>'+turns+'</b> soruluk bir geçmiş var. Nasıl devam edelim? '+
+    '<div class="m-sub">Bu çalışma alanında <b>'+turns+'</b> soruluk bir geçmiş var. Devam etmek için bir seçenek seçin. '+
       'Geçmiş, prompt\'a düz metin olarak eklenmez — yalnızca bir <b>hafıza stratejisi</b> olarak kullanılır.</div>'+
     '<div class="hist-opts">'+
       '<button class="hist-opt" data-mode="summary_buffer"><b>Özet olarak yükle</b><span>Önerilen — geçmiş özetlenip bağlam olarak taşınır, token tasarrufu.</span></button>'+
       '<button class="hist-opt" data-mode="sliding_window"><b>Tümünü yükle</b><span>Son turn\'ler kayar pencere ile hafızada tutulur.</span></button>'+
       '<button class="hist-opt" data-mode="none"><b>Sıfırdan başla</b><span>Geçmişi unut ve sohbeti temizle.</span></button>'+
-    '</div>'
+    '</div>',
+    {persistent:true}
   );
-  ov.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{ closeModal(ov); });
   ov.querySelectorAll('.hist-opt').forEach(b=>{
     b.onclick=()=>{
       const mode=b.dataset.mode;
@@ -2249,7 +2255,7 @@ function renderSourcesList(sources){
         '<span class="source-name">'+escapeHtml(s.filename)+'</span>'+
         pageBadge+
       '</div>'+
-      '<div class="source-preview">'+escapeHtml((s.preview||'').slice(0,200))+'</div>'+
+      '<div class="source-preview">'+escapeHtml((s.preview||'').slice(0,360))+'</div>'+
     '</button>';
   });
   return src;

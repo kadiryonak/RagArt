@@ -5,8 +5,8 @@ watches for JS/console/network errors, screenshots each step, and RECORDS a
 signature for every element it exercised so subsequent runs SKIP what's
 already been tested ("agent gezsin, her şeyi denesin, kaydetsin, tekrarlamasın").
 
-State persists in e2e/.explore-state.json; a per-run report lands in
-e2e/explore-report.json.
+State persists in tests/e2e/.explore-state.json; a per-run report lands in
+tests/e2e/explore-report.json.
 
 Setup (one-time):
     pip install playwright
@@ -18,7 +18,7 @@ Run (RagArt must be serving on the URL below):
     python scripts/agent_explore.py --headed      # watch it click around
 
 This is a *fuzz/smoke* explorer, complementary to the deterministic specs in
-e2e/ragart.spec.js and the Python integration suite. It is intentionally
+tests/e2e/ragart.spec.js and the Python integration suite. It is intentionally
 defensive: detached nodes, navigations and dialogs are handled, and the run
 is capped so it always terminates.
 """
@@ -31,9 +31,9 @@ import json
 import time
 from pathlib import Path
 
-STATE_PATH = Path("e2e/.explore-state.json")
-REPORT_PATH = Path("e2e/explore-report.json")
-SHOTS_DIR = Path("e2e/explore-shots")
+STATE_PATH = Path("tests/e2e/.explore-state.json")
+REPORT_PATH = Path("tests/e2e/explore-report.json")
+SHOTS_DIR = Path("tests/e2e/explore-shots")
 
 # Selectors for "things a user can interact with".
 INTERACTIVE = "button, a[href], [role=button], [role=tab], select, summary, input[type=checkbox]"

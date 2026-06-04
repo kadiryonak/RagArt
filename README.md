@@ -22,17 +22,17 @@ RagArt is an end-to-end RAG pipeline that goes beyond basic semantic search. It 
 <summary><b>🎬 Click to see the live demo video</b></summary>
 <br>
 
-![RagArt Demo](görsel/demo.webp)
+![RagArt Demo](docs/images/demo.webp)
 
 </details>
 
 | Soru-Cevap Arayüzü | Ayarlar Paneli |
 |:---:|:---:|
-| ![QA Interface](görsel/Ekran%20görüntüsü%202026-05-19%20010413.png) | ![Settings](görsel/Ekran%20görüntüsü%202026-05-19%20010801.png) |
+| ![QA Interface](docs/images/qa-interface.png) | ![Settings](docs/images/settings.png) |
 
 | Dosya Yönetimi | Farklı Soru Örneği |
 |:---:|:---:|
-| ![File Manager](görsel/Ekran%20görüntüsü%202026-05-19%20014452.png) | ![Question Example](görsel/Ekran%20görüntüsü%202026-05-19%200106554.png) |
+| ![File Manager](docs/images/file-manager.png) | ![Question Example](docs/images/question-example.png) |
 
 ---
 
@@ -293,10 +293,11 @@ Evaluated on 6 critical samples with Groq `llama-3.3-70b-versatile`:
 
 ```
 RagArt/
-├── app.py                          # Flask REST API server (12 endpoints)
-├── run.py                          # CLI entry point (web/interactive/check modes)
-├── setup.py                        # Package configuration
-├── requirements.txt                # Dependencies
+├── app.py                          # Flask app factory + REST API
+├── ragart_cli.py                   # `ragart` command (dev + --production serving)
+├── run.py                          # Legacy runner (web/interactive/check modes)
+├── pyproject.toml                  # Package metadata, deps & extras
+├── requirements.txt                # Pinned runtime dependencies
 ├── .env.example                    # Environment variable template
 │
 ├── src/                            # Core RAG engine
@@ -366,12 +367,23 @@ RagArt/
 │       ├── datasets/               # Hand-crafted golden Q&A pairs
 │       └── baselines/              # Frozen evaluation baselines (v0-v4)
 │
-├── scripts/
-│   └── run_eval.py                 # CLI for running evaluations
+│   │
+│   └── e2e/                        # Playwright web E2E tests (JS)
+│       ├── ragart.spec.js          # Deterministic browser specs
+│       └── README.md               # E2E + agent-crawler guide
 │
-├── data/                           # Knowledge base (50 Turkish Wikipedia articles)
-├── docs/                           # Architecture docs & eval history
-└── görsel/                         # Screenshots & demo video
+├── scripts/
+│   ├── run_eval.py                 # CLI for running evaluations
+│   └── agent_explore.py            # Agent-based exploratory UI crawler
+│
+├── monitoring/                     # Prometheus + Grafana stack (docker-compose)
+├── data/                           # Knowledge base (Turkish Wikipedia articles)
+├── docs/                           # Architecture docs, eval history & images
+│   └── images/                     # Screenshots & demo video
+│
+├── Dockerfile / docker-compose.yml # Container build + local stack
+├── render.yaml / Procfile          # Deploy descriptors (Render / Heroku-style)
+└── gunicorn.conf.py                # Production WSGI config (gunicorn + gevent)
 ```
 
 ---
