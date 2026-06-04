@@ -243,6 +243,52 @@ a:hover{text-decoration:underline}
 
 .ask-grid{display:grid;grid-template-columns:minmax(0,40fr) minmax(0,60fr);gap:20px;align-items:start}
 .panel{background:var(--surface-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+
+/* ---- chat layout (ChatGPT / NotebookLM style) ---- */
+.chat-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px);gap:20px;align-items:start}
+.chat-col{display:flex;flex-direction:column;height:calc(100vh - var(--header-h) - 150px);min-height:440px;padding:0;overflow:hidden}
+.chat-head{display:flex;align-items:center;justify-content:space-between;
+  padding:13px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.chat-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:9px}
+.hist-chip{font-family:var(--font-mono);font-size:10.5px;font-weight:600;
+  padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);
+  border:1px solid var(--accent-line)}
+.btn.sm{padding:6px 11px;font-size:12.5px;gap:5px}
+.btn.sm svg{width:14px;height:14px}
+.chat-thread{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:18px;scroll-behavior:smooth}
+.chat-empty{margin:auto;text-align:center;color:var(--text-muted);padding:20px}
+.chat-empty svg{width:40px;height:40px;margin-bottom:10px;opacity:.7}
+.msg{display:flex;gap:11px;max-width:100%}
+.msg.user{flex-direction:row-reverse}
+.msg-avatar{width:28px;height:28px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:12px;font-weight:700}
+.msg.assistant .msg-avatar{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+.msg.user .msg-avatar{background:var(--surface);color:var(--text-secondary);border:1px solid var(--border)}
+.msg-main{min-width:0;max-width:calc(100% - 40px)}
+.msg.user .msg-main{display:flex;flex-direction:column;align-items:flex-end}
+.msg-body{font-size:14.5px;line-height:1.62;border-radius:var(--radius-sm);padding:11px 14px;
+  border:1px solid var(--border);background:var(--surface);word-break:break-word}
+.msg.user .msg-body{background:var(--accent-soft);border-color:var(--accent-line);display:inline-block;white-space:pre-wrap}
+.msg.assistant .msg-body.streaming{white-space:pre-wrap}
+.msg-actions{display:flex;gap:7px;margin-top:7px}
+.msg-copy{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);
+  border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:3px 8px;cursor:pointer}
+.msg-copy:hover{color:var(--accent);border-color:var(--accent-line)}
+.composer{flex-shrink:0;border-top:1px solid var(--border);padding:12px 16px}
+.composer-box{display:flex;gap:9px;align-items:flex-end}
+.composer .q-textarea{min-height:46px;max-height:180px;flex:1}
+.send-btn{width:46px;height:46px;flex-shrink:0;padding:0;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm)}
+.send-btn svg{width:18px;height:18px}
+.sources-panel{position:sticky;top:calc(var(--header-h) + 16px);max-height:calc(100vh - var(--header-h) - 150px);overflow-y:auto}
+
+/* history entry modal */
+.hist-opts{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.hist-opt{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;
+  padding:13px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);cursor:pointer;transition:border-color .14s,background .14s}
+.hist-opt:hover{border-color:var(--accent);background:var(--accent-soft)}
+.hist-opt b{font-size:14px;color:var(--text)}
+.hist-opt span{font-size:12.5px;color:var(--text-secondary);line-height:1.45}
 .panel-label{
   font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.07em;
   text-transform:uppercase;color:var(--text-muted);margin-bottom:11px;
@@ -645,6 +691,10 @@ input[type=range]{flex:1;accent-color:var(--accent)}
 /* ============================================================  responsive  */
 @media(max-width:1023px){
   .ask-grid{grid-template-columns:1fr}
+  .chat-grid{grid-template-columns:1fr}
+  .chat-col{height:auto;min-height:0}
+  .chat-thread{max-height:60vh}
+  .sources-panel{position:static;max-height:none}
   .settings-layout{grid-template-columns:1fr}
   .settings-nav{position:static;display:flex;gap:4px;overflow-x:auto;padding:6px}
   .set-nav-item{white-space:nowrap;margin-bottom:0}
@@ -729,35 +779,45 @@ input[type=range]{flex:1;accent-color:var(--accent)}
         </button>
       </div>
 
-      <!-- Ask tab -->
+      <!-- Ask tab (chat) -->
       <div id="tabAsk">
-        <div class="ask-grid">
-          <div class="panel">
-            <div class="panel-label">Soru</div>
-            <textarea class="q-textarea" id="qInput" placeholder="Sorunuzu yazın... Yüklediğiniz belgelere dayalı, kaynak gösterilebilir bir yanıt alacaksınız."></textarea>
-            <div class="q-hint">
-              <span><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> ile gönder</span>
-              <span id="qCharCount" class="mono"></span>
+        <div class="chat-grid">
+          <div class="panel chat-col">
+            <div class="chat-head">
+              <div class="chat-title">
+                Sohbet
+                <span class="hist-chip hide" id="histChip" title="Önceki sohbet hafıza stratejisi"></span>
+              </div>
+              <button class="btn ghost sm" id="newChatBtn" type="button" title="Sohbeti temizle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                Yeni sohbet
+              </button>
             </div>
-            <button class="btn accent full lg" id="askBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              Soruyu Sor
-            </button>
-            <div class="suggest-wrap" id="suggestWrap">
-              <div class="lbl">Örnek sorular</div>
-              <div id="suggestChips"></div>
+
+            <div class="chat-thread" id="chatThread"></div>
+
+            <div class="composer">
+              <div class="suggest-wrap" id="suggestWrap">
+                <div class="lbl">Örnek sorular</div>
+                <div id="suggestChips"></div>
+              </div>
+              <div class="composer-box">
+                <textarea class="q-textarea" id="qInput" rows="1" placeholder="Sorunuzu yazın... Yüklediğiniz belgelere dayalı, kaynak gösterilebilir bir yanıt alırsınız."></textarea>
+                <button class="btn accent send-btn" id="askBtn" aria-label="Soruyu sor" title="Gönder">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+              <div class="q-hint">
+                <span><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> ile gönder</span>
+                <span id="qCharCount" class="mono"></span>
+              </div>
             </div>
           </div>
 
-          <div class="panel answer-card">
-            <div class="answer-head">
-              <h3>Cevap</h3>
-              <button class="copy-btn hide" id="copyBtn" aria-label="Cevabı kopyala" title="Kopyala">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              </button>
-            </div>
-            <div id="answerArea"></div>
-          </div>
+          <aside class="panel sources-panel">
+            <div class="sources-label" style="margin-top:0">Kaynak Belgeler</div>
+            <div class="sources-list" id="sourcesList"></div>
+          </aside>
         </div>
       </div>
 
@@ -1026,6 +1086,12 @@ input[type=range]{flex:1;accent-color:var(--accent)}
   <section class="view" id="view-help">
     <div class="wrap">
       <div class="hero" style="margin-bottom:22px">
+        <div class="settings-back">
+          <button class="btn ghost" id="helpBack">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            Geri dön
+          </button>
+        </div>
         <div class="eyebrow">Kullanım Kılavuzu</div>
         <h1 style="font-size:24px">RagArt Yardım</h1>
       </div>
@@ -1309,6 +1375,7 @@ const state = {
   settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
   lastNonSettingsHash:'#/',
   conversationHistory:[],
+  chat:[],                 // [{role:'user'|'assistant', content, sources?, meta?}]
   currentAsk:null, lastAnswer:null, justCreated:false
 };
 
@@ -1731,7 +1798,7 @@ function router(){
   else if(h==='#/help'){ view='help'; }
   else { view='landing'; state.activeWorkspace=null; }
 
-  if(view!=='settings') state.lastNonSettingsHash=h;
+  if(view!=='settings'&&view!=='help') state.lastNonSettingsHash=h;
 
   $$('.view').forEach(v=>v.classList.remove('active'));
   $('#view-'+view).classList.add('active');
@@ -1912,8 +1979,49 @@ function renderWorkspace(){
   if(state.justCreated){
     state.justCreated=false;
     toast('info','Boş çalışma alanı','Başlamak için bu alana dosya yükleyin.');
+  } else {
+    maybeOfferHistory();
   }
   updateStatusBar();
+}
+/* Claude-Code-style entry prompt: if this workspace has a saved chat, ask
+   once per open how to carry it forward. The transcript is never re-sent as
+   raw prompt text — only as a memory STRATEGY (sliding window / summary). */
+function maybeOfferHistory(){
+  const ws=state.activeWorkspace; if(!ws) return;
+  const saved=LS.get('ragart-chat-'+ws.id,[])||[];
+  if(!saved.length) return;
+  // Only offer once per workspace entry (not on every tab switch / re-render).
+  if(state._historyOfferedFor===ws.id) return;
+  state._historyOfferedFor=ws.id;
+  if($$('.modal-overlay').length) return;
+
+  const turns=saved.filter(m=>m.role==='user').length;
+  const ov=openModal(
+    '<button class="icon-btn modal-x" data-x aria-label="Kapat">'+ICON.x+'</button>'+
+    '<h3>Önceki sohbet bulundu</h3>'+
+    '<div class="m-sub">Bu çalışma alanında <b>'+turns+'</b> soruluk bir geçmiş var. Nasıl devam edelim? '+
+      'Geçmiş, prompt\'a düz metin olarak eklenmez — yalnızca bir <b>hafıza stratejisi</b> olarak kullanılır.</div>'+
+    '<div class="hist-opts">'+
+      '<button class="hist-opt" data-mode="summary_buffer"><b>Özet olarak yükle</b><span>Önerilen — geçmiş özetlenip bağlam olarak taşınır, token tasarrufu.</span></button>'+
+      '<button class="hist-opt" data-mode="sliding_window"><b>Tümünü yükle</b><span>Son turn\'ler kayar pencere ile hafızada tutulur.</span></button>'+
+      '<button class="hist-opt" data-mode="none"><b>Sıfırdan başla</b><span>Geçmişi unut ve sohbeti temizle.</span></button>'+
+    '</div>'
+  );
+  ov.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{ closeModal(ov); });
+  ov.querySelectorAll('.hist-opt').forEach(b=>{
+    b.onclick=()=>{
+      const mode=b.dataset.mode;
+      if(mode==='none'){
+        clearChat();
+      } else {
+        state.settings.memoryStrategy=mode; saveSettings();
+      }
+      updateHistChip();
+      closeModal(ov);
+      toast('info','Hafıza ayarlandı',{summary_buffer:'Geçmiş özet olarak taşınacak.',sliding_window:'Geçmiş kayar pencere ile taşınacak.',none:'Geçmiş temizlendi.'}[mode]);
+    };
+  });
 }
 function setTab(tab){
   state.activeTab=tab;
@@ -1940,22 +2048,111 @@ function updateStatusBar(){
     '<span class="seg">ws: '+escapeHtml(ws.id)+'</span>';
 }
 
-/* ---- ask tab ---- */
+/* ---- ask tab (chat) ---- */
+function chatKey(){
+  const id=state.activeWorkspace&&state.activeWorkspace.id;
+  return id?('ragart-chat-'+id):null;
+}
+function loadChat(){
+  const k=chatKey();
+  state.chat = k ? (LS.get(k,[])||[]) : [];
+  // Keep the server-sent history in sync with the visible thread.
+  state.conversationHistory = state.chat.map(m=>({role:m.role,content:m.content}));
+  const last=[...state.chat].reverse().find(m=>m.role==='assistant'&&m.sources&&m.sources.length);
+  state.lastAnswer = last ? {answer:last.content,sources:last.sources,timings:last.meta||{}} : null;
+}
+function saveChat(){
+  const k=chatKey(); if(k) LS.set(k,state.chat);
+}
+function clearChat(){
+  state.chat=[]; state.conversationHistory=[]; state.lastAnswer=null;
+  saveChat(); renderThread(); renderSourcesPanel(null);
+}
+function histChipLabel(){
+  return {sliding_window:'hafıza: tüm geçmiş',summary_buffer:'hafıza: özet',none:''}[state.settings.memoryStrategy]||'';
+}
+function updateHistChip(){
+  const chip=$('#histChip'); if(!chip) return;
+  const lbl=state.chat.length?histChipLabel():'';
+  chip.textContent=lbl; chip.classList.toggle('hide',!lbl);
+}
 function initAskTab(){
-  const area=$('#answerArea');
-  if(!state.lastAnswer){
-    area.innerHTML='<div class="answer-empty">'+ICON.msg+
-      '<div>Henüz soru sorulmadı.</div><div style="font-size:12.5px;margin-top:3px">Soldaki alana yazın ya da örnek bir soru seçin.</div></div>'+
-      '<div class="sources-label">Kaynak Belgeler</div>'+
-      '<div class="sources-list" id="sourcesList"><div class="answer-empty">Henüz kaynak yok. Bir soru sorduğunuzda burada görünür.</div></div>';
-    $('#copyBtn').classList.add('hide');
-  }
+  loadChat();
+  renderThread();
+  const last=[...state.chat].reverse().find(m=>m.role==='assistant'&&m.sources);
+  renderSourcesPanel(last?last.sources:null);
   const sc=$('#suggestChips');
   sc.innerHTML=SUGGESTIONS.map(s=>'<button class="chip" type="button">'+escapeHtml(s)+'</button>').join('');
   sc.querySelectorAll('.chip').forEach((ch,i)=>{
-    ch.onclick=()=>{ $('#qInput').value=SUGGESTIONS[i]; $('#qInput').focus(); updateCharCount(); };
+    ch.onclick=()=>{ const t=$('#qInput'); t.value=SUGGESTIONS[i]; t.focus(); updateCharCount(); autoGrow(t); };
   });
+  updateHistChip();
   updateCharCount();
+}
+function autoGrow(t){ if(!t) return; t.style.height='auto'; t.style.height=Math.min(180,t.scrollHeight)+'px'; }
+function scrollThread(){ const th=$('#chatThread'); if(th) th.scrollTop=th.scrollHeight; }
+function renderThread(){
+  const th=$('#chatThread'); if(!th) return;
+  $('#suggestWrap').classList.toggle('hide',state.chat.length>0);
+  if(!state.chat.length){
+    th.innerHTML='<div class="chat-empty">'+ICON.msg+
+      '<div>Henüz soru sorulmadı.</div>'+
+      '<div style="font-size:12.5px;margin-top:3px">Aşağıya yazın ya da bir örnek soru seçin.</div></div>';
+    return;
+  }
+  th.innerHTML=state.chat.map((m,i)=>msgHtml(m,i)).join('');
+  bindMsgActions();
+  scrollThread();
+}
+function msgHtml(m,i){
+  if(m.role==='user'){
+    return '<div class="msg user"><div class="msg-avatar">S</div>'+
+      '<div class="msg-main"><div class="msg-body">'+escapeHtml(m.content)+'</div></div></div>';
+  }
+  const hasContent=!!(m.content&&m.content.trim());
+  const extra=hasContent
+    ? telemetryHtml(m.meta||{},(m.sources||[]).length)+
+      '<div class="msg-actions"><button class="msg-copy" type="button" data-copy="'+i+'">Kopyala</button></div>'
+    : '';
+  return '<div class="msg assistant"><div class="msg-avatar">◆</div>'+
+    '<div class="msg-main"><div class="msg-body">'+renderMarkdown(m.content||'')+'</div>'+
+    extra+'</div></div>';
+}
+function telemetryHtml(t,nSources){
+  const parts=[];
+  if(t.latency!=null) parts.push('latency: <b>'+t.latency+'s</b>');
+  if(t.groundedness!=null){
+    const cls=t.groundedness>=0.7?'t-good':t.groundedness>=0.5?'':'t-warn';
+    parts.push('groundedness: <b class="'+cls+'">'+Number(t.groundedness).toFixed(2)+'</b>');
+  }
+  parts.push('<b>'+(nSources||0)+'</b> kaynak');
+  if(t.strategy) parts.push('strategy: <b>'+escapeHtml(t.strategy)+'</b>');
+  if(t.cache) parts.push('cache: <b class="'+(t.cache==='hit'?'t-good':'')+'">'+escapeHtml(t.cache)+'</b>');
+  if(state.devMode&&t.query_complexity) parts.push('query_complexity: <b>'+escapeHtml(t.query_complexity)+'</b>');
+  if(!parts.length) return '';
+  return '<div class="telemetry">'+parts.join('<span class="sep">·</span>')+'</div>';
+}
+function bindMsgActions(){
+  $$('.msg-copy').forEach(b=>{
+    b.onclick=()=>{
+      const m=state.chat[Number(b.dataset.copy)]; if(!m) return;
+      const done=()=>toast('success','Kopyalandı','Cevap panoya alındı.');
+      if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(m.content||'').then(done,()=>fallbackCopy(m.content||'',done));
+      else fallbackCopy(m.content||'',done);
+    };
+  });
+  $$('#chatThread sup.cite').forEach(c=>{
+    const jump=()=>scrollToSource(c.dataset.cite);
+    c.onclick=jump;
+    c.onkeydown=e=>{ if(e.key==='Enter') jump(); };
+  });
+}
+function renderSourcesPanel(sources){
+  const sl=$('#sourcesList'); if(!sl) return;
+  if(!sources) { sl.innerHTML='<div class="answer-empty">Henüz kaynak yok. Bir soru sorduğunuzda burada görünür.</div>'; return; }
+  sl.innerHTML=renderSourcesList(sources);
+  state.lastAnswer=state.lastAnswer||{}; state.lastAnswer.sources=sources;
+  bindSourceEvents();
 }
 function updateCharCount(){
   const n=$('#qInput').value.length;
@@ -1973,47 +2170,44 @@ async function doAsk(){
   const ctrl=new AbortController();
   state.currentAsk=ctrl;
   $('#askBtn').disabled=true;
-  $('#suggestWrap').classList.add('hide');
-  $('#copyBtn').classList.add('hide');
-  const area=$('#answerArea');
-  // Live streaming: a plain-text body grows token-by-token; on `done` it is
-  // re-rendered as markdown by paintAnswer().
-  area.innerHTML=
-    '<div class="answer-body streaming" id="streamBody"><span class="stream-caret"></span></div>'+
-    '<div class="sources-label">Kaynak Belgeler</div>'+
-    '<div class="sources-list" id="sourcesList"><div class="answer-empty">Kaynaklar yükleniyor...</div></div>';
-  const tw=makeTypewriter($('#streamBody'),{cps:200});
-  ctrl.signal.addEventListener('abort',()=>tw.stop());  // stop typing if a new ask starts
-  let answer='', sources=[], finished=false, res=null, doneEv=null;
+
+  // 1) Append the user turn + an empty assistant turn, render the thread.
+  state.chat.push({role:'user',content:q});
+  const aMsg={role:'assistant',content:'',sources:[],meta:{}};
+  state.chat.push(aMsg);
+  const qel=$('#qInput'); qel.value=''; updateCharCount(); autoGrow(qel);
+  renderThread();
+  updateHistChip();
+
+  // The assistant bubble is the last .msg in the thread — stream into its body.
+  const aMain=$('#chatThread').lastElementChild.querySelector('.msg-body');
+  aMain.classList.add('streaming');
+  aMain.innerHTML='<span class="stream-caret"></span>';
+  const tw=makeTypewriter(aMain,{cps:200});
+  ctrl.signal.addEventListener('abort',()=>tw.stop());
+
+  let answer='', sources=[], finished=false, doneEv=null;
   try{
     await API.askStream(q,{
       signal:ctrl.signal,
       onEvent:(ev)=>{
         if(ev.type==='sources'){
           sources=normalizeAskResponse({sources:ev.sources||[]}).sources||[];
-          const sl=$('#sourcesList');
-          if(sl) sl.innerHTML=renderSourcesList(sources);
+          renderSourcesPanel(sources);
         } else if(ev.type==='token'){
-          answer+=ev.text||'';
-          tw.push(answer);                 // gradual typewriter reveal
+          answer+=ev.text||''; tw.push(answer); scrollThread();
         } else if(ev.type==='done'){
           finished=true; doneEv=ev;
-          res={
-            answer:ev.answer||answer,
-            sources:sources,
-            timings:{
-              groundedness:ev.groundedness,
-              strategy:ev.prompt_strategy,
-              cache:ev.cache_hit?'hit':'miss',
-              query_complexity:ev.query_complexity,
-            },
+          answer=ev.answer||answer;
+          aMsg.content=answer;
+          aMsg.sources=sources;
+          aMsg.meta={
+            groundedness:ev.groundedness,
+            strategy:ev.prompt_strategy,
+            cache:ev.cache_hit?'hit':'miss',
+            query_complexity:ev.query_complexity,
           };
-          state.lastAnswer=res;
-          state.conversationHistory.push({role:'user',content:q});
-          state.conversationHistory.push({role:'assistant',content:res.answer});
-          // Converge the typewriter to the final answer — covers the local
-          // provider (one chunk) and cache hits (no token events at all).
-          tw.push(res.answer);
+          tw.push(answer);
         } else if(ev.type==='error'){
           throw new Error(ev.error||'Yanıt alınamadı.');
         }
@@ -2021,51 +2215,28 @@ async function doAsk(){
     });
     if(ctrl.signal.aborted){ tw.stop(); return; }
     if(!finished) throw new Error('Yanıt yarıda kesildi.');
-    await tw.finish();                      // let the typewriter drain to the end
+    await tw.finish();
     if(ctrl.signal.aborted) return;
-    paintAnswer(res);                       // re-render as markdown once typed out
+    // Persist + re-render the thread (markdown, telemetry, copy, citations).
+    state.conversationHistory=state.chat.map(m=>({role:m.role,content:m.content}));
+    state.lastAnswer={answer:aMsg.content,sources:aMsg.sources,timings:aMsg.meta};
+    saveChat();
+    renderThread();
+    renderSourcesPanel(aMsg.sources&&aMsg.sources.length?aMsg.sources:null);
     const g=doneEv&&doneEv.groundedness;
     if(typeof g==='number'&&g<0.5) toast('warning','Düşük groundedness','Skor '+g.toFixed(2)+' — yanıt kaynaklarla zayıf destekleniyor.');
     if(doneEv&&doneEv.cache_hit) toast('info','Cache hit','Yanıt önbellekten döndü.');
   }catch(e){
     tw.stop();
     if(e.name==='AbortError'){ return; }
-    area.innerHTML='<div class="answer-empty">'+ICON.alert+'<div>'+escapeHtml(e.message||'Yanıt alınamadı.')+'</div></div>'+
-      '<div class="sources-label">Kaynak Belgeler</div>'+
-      '<div class="sources-list" id="sourcesList"><div class="answer-empty">Kaynak bulunamadı.</div></div>';
+    // Drop the half-finished assistant bubble, show the error in its place.
+    aMsg.content='⚠️ '+(e.message||'Yanıt alınamadı.');
+    aMsg.meta={}; aMsg.sources=[];
+    saveChat(); renderThread();
     toast('error','İstek başarısız',e.message||'Bilinmeyen hata.');
   }finally{
     if(state.currentAsk===ctrl){ state.currentAsk=null; $('#askBtn').disabled=false; }
   }
-}
-function paintAnswer(res){
-  const area=$('#answerArea');
-  const t=res.timings||{};
-  let tele='';
-  if(Object.keys(t).length){
-    const parts=[];
-    if(t.latency!=null) parts.push('latency: <b>'+t.latency+'s</b>');
-    if(t.groundedness!=null){
-      const cls=t.groundedness>=0.7?'t-good':t.groundedness>=0.5?'':'t-warn';
-      parts.push('groundedness: <b class="'+cls+'">'+Number(t.groundedness).toFixed(2)+'</b>');
-    }
-    parts.push('<b>'+(res.sources?res.sources.length:0)+'</b> kaynak');
-    if(t.strategy) parts.push('strategy: <b>'+escapeHtml(t.strategy)+'</b>');
-    if(t.cache) parts.push('cache: <b class="'+(t.cache==='hit'?'t-good':'')+'">'+escapeHtml(t.cache)+'</b>');
-    if(state.devMode&&t.query_complexity) parts.push('query_complexity: <b>'+escapeHtml(t.query_complexity)+'</b>');
-    tele='<div class="telemetry">'+parts.join('<span>·</span>')+'</div>';
-  }
-  const srcList = renderSourcesList(res.sources||[]);
-  const sourcesHtml = '<div class="sources-label">Kaynak Belgeler</div>'+
-    '<div class="sources-list" id="sourcesList">'+srcList+'</div>';
-  area.innerHTML='<div class="answer-body">'+renderMarkdown(res.answer||'')+'</div>'+tele+sourcesHtml;
-  $('#copyBtn').classList.remove('hide');
-  area.querySelectorAll('sup.cite').forEach(c=>{
-    const jump=()=>scrollToSource(c.dataset.cite);
-    c.onclick=jump;
-    c.onkeydown=e=>{ if(e.key==='Enter') jump(); };
-  });
-  bindSourceEvents();
 }
 function renderSourcesList(sources){
   if(!sources.length) return '<div class="answer-empty">Kaynak bulunamadı.</div>';
@@ -2162,7 +2333,7 @@ function openSourceDetail(s){
   });
 }
 function scrollToSource(n){
-  const wrap=$('#answerArea');
+  const wrap=$('#sourcesList');
   const el=wrap?wrap.querySelector('.source-item[data-source-n="'+n+'"]'):null;
   if(!el) return;
   el.scrollIntoView?el.scrollIntoView({block:'center'}):0;
@@ -2559,23 +2730,21 @@ function bindEvents(){
   $('#navSettings').onclick=()=>go('#/settings');
   $('#navTheme').onclick=()=>applyTheme(state.theme==='dark'?'light':'dark');
   $('#settingsBack').onclick=()=>go(state.lastNonSettingsHash||'#/');
+  $('#helpBack').onclick=()=>go(state.lastNonSettingsHash||'#/');
 
   $('#tabBtnAsk').onclick=()=>setTab('ask');
   $('#tabBtnFiles').onclick=()=>setTab('files');
 
-  /* ask */
+  /* ask (chat) */
   $('#askBtn').onclick=doAsk;
-  $('#qInput').addEventListener('input',updateCharCount);
+  $('#qInput').addEventListener('input',e=>{ updateCharCount(); autoGrow(e.target); });
   $('#qInput').addEventListener('keydown',e=>{
     if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); doAsk(); }
   });
-  $('#copyBtn').onclick=()=>{
-    if(!state.lastAnswer) return;
-    const txt=state.lastAnswer.answer||'';
-    const done=()=>toast('success','Kopyalandı','Cevap panoya alındı.');
-    if(navigator.clipboard&&navigator.clipboard.writeText){
-      navigator.clipboard.writeText(txt).then(done,()=>fallbackCopy(txt,done));
-    } else fallbackCopy(txt,done);
+  $('#newChatBtn').onclick=()=>{
+    if(state.chat.length&&!confirm('Bu sohbeti temizlemek istediğinize emin misiniz?')) return;
+    clearChat(); updateHistChip();
+    toast('info','Sohbet temizlendi','Yeni bir sohbete başlayabilirsiniz.');
   };
 
   /* files */
