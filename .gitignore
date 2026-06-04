@@ -162,6 +162,7 @@ skills-lock.json
 
 data/workspaces/
 data/feedback.jsonl
+data/.extract_cache/
 
 # Node / Playwright
 node_modules/

@@ -87,6 +87,40 @@ class TestPDFLoaderScanned:
         assert all(d.metadata["extraction"] == "text" for d in docs)
         assert docs[0].metadata["page"] == 1
 
+    def test_second_load_served_from_cache(self, monkeypatch, tmp_path):
+        # Regression: OCR/extraction re-ran on every startup + reindex, blocking
+        # for ~30s/page. The result is now cached by file content, so a second
+        # load doesn't touch the (expensive) reader at all.
+        import pypdf
+        from config.settings import settings
+
+        monkeypatch.setattr(settings, "DATA_FOLDER", str(tmp_path), raising=False)
+        monkeypatch.setattr("src.loaders.pdf_loader.ocr_available", lambda: False)
+
+        f = tmp_path / "doc.pdf"
+        f.write_bytes(b"%PDF-1.4 stub bytes")
+
+        calls = []
+
+        def fake_reader(*_a, **_k):
+            calls.append(1)
+            pg = MagicMock()
+            pg.extract_text.return_value = (
+                "Optimizasyon bir amaç fonksiyonunu kısıtlar altında en iyi "
+                "değere ulaştıran sayısal bir yöntemdir."
+            )
+            r = MagicMock()
+            r.pages = [pg]
+            return r
+
+        monkeypatch.setattr(pypdf, "PdfReader", fake_reader)
+
+        d1 = PDFLoader().load(f)
+        d2 = PDFLoader().load(f)
+        assert len(d1) == 1 and len(d2) == 1
+        assert d1[0].page_content == d2[0].page_content
+        assert len(calls) == 1, "second load should hit the cache, not re-extract"
+
     def test_mixed_pdf_keeps_only_readable_pages(self, monkeypatch):
         self._fake_reader(monkeypatch, [
             "Bu sayfa gerçek ve okunabilir Türkçe metin içeriği taşımaktadır.",

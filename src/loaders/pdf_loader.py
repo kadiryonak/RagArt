@@ -17,8 +17,11 @@ opt-in:  pip install "ragart[ocr]"
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
+import tempfile
 from pathlib import Path
 from typing import List
 
@@ -30,6 +33,47 @@ except ImportError:
 from src.loaders.base import BaseLoader
 
 logger = logging.getLogger(__name__)
+
+
+# ── Extraction cache ───────────────────────────────────────────────────
+# OCR is expensive (seconds per page). Without a cache it re-runs on every
+# server start and every reindex, because BM25 is rebuilt from disk each
+# time — that blocked startup for ~30s/page and made reindex hang. We cache
+# the full extraction result keyed by file content (path+size+mtime) AND
+# OCR availability, so a PDF is OCR'd once, then loads instantly.
+
+def _cache_dir() -> Path:
+    try:
+        from config.settings import settings
+        base = Path(settings.DATA_FOLDER) / ".extract_cache"
+    except Exception:
+        base = Path(tempfile.gettempdir()) / "ragart_extract_cache"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _cache_key(file_path: Path, ocr_on: bool) -> str:
+    st = file_path.stat()
+    raw = f"{file_path.resolve()}|{st.st_size}|{int(st.st_mtime)}|ocr={ocr_on}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def _cache_read(cache_file: Path):
+    if not cache_file.exists():
+        return None
+    try:
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+        return [Document(page_content=d["page_content"], metadata=d["metadata"]) for d in data]
+    except Exception:
+        return None
+
+
+def _cache_write(cache_file: Path, docs: List[Document]) -> None:
+    try:
+        payload = [{"page_content": d.page_content, "metadata": d.metadata} for d in docs]
+        cache_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
 
 
 # ── Text-quality heuristic ─────────────────────────────────────────────
@@ -112,11 +156,24 @@ class PDFLoader(BaseLoader):
                 "pypdf is required for PDF loading. Install with: pip install pypdf"
             ) from e
 
+        ocr_ok = ocr_available()
+
+        # Fast path: return the cached extraction if the file is unchanged.
+        # This is what stops OCR from re-running on every startup / reindex.
+        # Guarded so a missing file (e.g. mocked in tests) just skips caching.
+        cache_file = None
+        try:
+            cache_file = _cache_dir() / (_cache_key(file_path, ocr_ok) + ".json")
+            cached = _cache_read(cache_file)
+            if cached is not None:
+                return cached
+        except Exception:
+            cache_file = None
+
         reader = PdfReader(str(file_path))
         total = len(reader.pages)
         documents: List[Document] = []
 
-        ocr_ok = ocr_available()
         pdfium_doc = None
         scanned_pages = 0
         ocr_pages = 0
@@ -172,4 +229,7 @@ class PDFLoader(BaseLoader):
                 "%s: %d/%d sayfa taranmış/okunamadı, atlandı%s",
                 file_path.name, scanned_pages, total, hint,
             )
+
+        if cache_file is not None:
+            _cache_write(cache_file, documents)
         return documents
