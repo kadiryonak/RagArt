@@ -293,9 +293,8 @@ Evaluated on 6 critical samples with Groq `llama-3.3-70b-versatile`:
 
 ```
 RagArt/
-├── app.py                          # Flask app factory + REST API
+├── app.py                          # Flask app factory + REST API (gunicorn `app:app`)
 ├── ragart_cli.py                   # `ragart` command (dev + --production serving)
-├── run.py                          # Legacy runner (web/interactive/check modes)
 ├── pyproject.toml                  # Package metadata, deps & extras
 ├── requirements.txt                # Pinned runtime dependencies
 ├── .env.example                    # Environment variable template
@@ -373,6 +372,7 @@ RagArt/
 │       └── README.md               # E2E + agent-crawler guide
 │
 ├── scripts/
+│   ├── run.py                      # Legacy runner (web/interactive/check modes)
 │   ├── run_eval.py                 # CLI for running evaluations
 │   └── agent_explore.py            # Agent-based exploratory UI crawler
 │

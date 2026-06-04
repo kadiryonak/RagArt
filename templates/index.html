@@ -245,7 +245,7 @@ a:hover{text-decoration:underline}
 .panel{background:var(--surface-elevated);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
 
 /* ---- chat layout (ChatGPT / NotebookLM style) ---- */
-.chat-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,460px);gap:20px;align-items:start}
+.chat-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(440px,600px);gap:20px;align-items:stretch}
 .chat-col{display:flex;flex-direction:column;height:calc(100vh - var(--header-h) - 150px);min-height:440px;padding:0;overflow:hidden}
 .chat-head{display:flex;align-items:center;justify-content:space-between;
   padding:13px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -279,9 +279,14 @@ a:hover{text-decoration:underline}
 .composer .q-textarea{min-height:46px;max-height:180px;flex:1}
 .send-btn{width:46px;height:46px;flex-shrink:0;padding:0;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm)}
 .send-btn svg{width:18px;height:18px}
-.sources-panel{position:sticky;top:calc(var(--header-h) + 16px);max-height:calc(100vh - var(--header-h) - 150px);overflow-y:auto}
-.sources-panel .sources-list{max-height:none}
-.sources-panel .source-preview{font-size:13px;-webkit-line-clamp:6;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.sources-panel{height:calc(100vh - var(--header-h) - 150px);min-height:440px;display:flex;flex-direction:column;padding:0;overflow:hidden}
+.sources-head{padding:13px 16px;border-bottom:1px solid var(--border);flex-shrink:0;
+  font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--text-muted)}
+.sources-panel .sources-list{flex:1;max-height:none;overflow-y:auto;padding:14px 16px}
+.sources-panel .source-preview{font-size:13px;-webkit-line-clamp:8;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.sources-panel .source-detail,.sources-panel .source-frame{height:auto}
+.sources-panel .source-frame{height:60vh}
 
 /* history entry modal */
 .hist-opts{display:flex;flex-direction:column;gap:10px;margin-top:6px}
@@ -552,6 +557,15 @@ input[type=range]{flex:1;accent-color:var(--accent)}
 .devmode-card .dm-txt{flex:1}
 .devmode-card .dm-txt strong{font-size:14px}
 .devmode-card .dm-txt p{font-size:12.5px;color:var(--text-secondary);margin-top:2px}
+.dev-info-card{
+  margin-top:14px;padding:15px 17px;border:1px solid var(--border);
+  border-left:3px solid var(--accent);border-radius:var(--radius);background:var(--surface);
+}
+.dev-info-card h4{display:flex;align-items:center;gap:7px;font-size:14px;margin-bottom:8px}
+.dev-info-card h4 svg{width:16px;height:16px;color:var(--accent)}
+.dev-info-card p{font-size:13px;color:var(--text-secondary);line-height:1.55;margin:0 0 8px}
+.dev-info-card p:last-child{margin-bottom:0}
+.dev-info-card b{color:var(--text)}
 .byok-note{
   display:flex;gap:8px;align-items:flex-start;padding:9px 11px;margin-bottom:12px;
   background:var(--success-soft);border-radius:var(--radius-sm);
@@ -696,7 +710,7 @@ input[type=range]{flex:1;accent-color:var(--accent)}
   .chat-grid{grid-template-columns:1fr}
   .chat-col{height:auto;min-height:0}
   .chat-thread{max-height:60vh}
-  .sources-panel{position:static;max-height:none}
+  .sources-panel{height:auto;min-height:0;max-height:70vh}
   .settings-layout{grid-template-columns:1fr}
   .settings-nav{position:static;display:flex;gap:4px;overflow-x:auto;padding:6px}
   .set-nav-item{white-space:nowrap;margin-bottom:0}
@@ -817,7 +831,7 @@ input[type=range]{flex:1;accent-color:var(--accent)}
           </div>
 
           <aside class="panel sources-panel">
-            <div class="sources-label" style="margin-top:0">Kaynak Belgeler</div>
+            <div class="sources-head">Kaynak Belgeler</div>
             <div class="sources-list" id="sourcesList"></div>
           </aside>
         </div>
@@ -1063,13 +1077,20 @@ input[type=range]{flex:1;accent-color:var(--accent)}
           <!-- 9 Dev mode -->
           <div class="set-section" data-sec="devmode">
             <h2>Geliştirici Modu</h2>
-            <p class="sub">İleri seviye stratejileri ve gizli kontrolleri açar — multi_query, custom prompt, ham telemetri.</p>
+            <p class="sub">İleri seviye ayarları ve gizli kontrolleri açar — prompt stratejisi, retrieval/reranker, hafıza, context, vektör DB, cache ve ham telemetri.</p>
             <div class="devmode-card">
               <div class="dm-txt">
                 <strong>Geliştirici Modu</strong>
-                <p>Açıkken Prompt Stratejisi listesinde <code>multi_query</code> ve <code>custom</code> görünür; cevap kartında ham timing verisi gösterilir.</p>
+                <p>Kapalıyken yalnızca Sağlayıcı ve Güvenlik ayarları görünür; sistem optimum varsayılanlarla çalışır. Açınca tüm ileri ayar bölümleri görünür.</p>
               </div>
               <div class="toggle" id="devToggle" role="switch" tabindex="0" aria-label="Geliştirici Modu"></div>
+            </div>
+
+            <div class="dev-info-card hide" id="devInfoCard">
+              <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg> Geliştirici Modu nedir?</h4>
+              <p>RAG hattının ileri kontrollerini açar: <b>prompt stratejisi</b>, <b>retrieval &amp; reranker</b>, <b>sohbet hafızası</b>, <b>context engineering</b>, <b>vektör veritabanı</b> ve <b>cache yönetimi</b> bölümleri ile cevaplardaki ham telemetri (latency, groundedness, query_complexity).</p>
+              <p><b>Ne zaman açılmalı?</b> Varsayılanlar çoğu kullanıcı için optimize edilmiştir. Yalnızca belirli bir davranışı ölçüp ince ayar yapmak istiyorsanız (ör. latency/groundedness dengesi, farklı retrieval stratejisi denemek) açın.</p>
+              <p><b>Kimler açmalı?</b> RAG/LLM kavramlarına aşina geliştiriciler. Emin değilseniz <b>kapalı bırakın</b> — yanlış ayarlar yanıt kalitesini düşürebilir. Ayarları her zaman “Tüm Ayarları Sıfırla” ile varsayılana döndürebilirsiniz.</p>
             </div>
           </div>
 
@@ -2056,8 +2077,10 @@ function updateStatusBar(){
 
 /* ---- ask tab (chat) ---- */
 function chatKey(){
+  // v2: bumped after the SSE UTF-8 fix so any pre-fix mojibake answers cached
+  // in the browser are orphaned (a fresh thread instead of garbled history).
   const id=state.activeWorkspace&&state.activeWorkspace.id;
-  return id?('ragart-chat-'+id):null;
+  return id?('ragart-chat-v2-'+id):null;
 }
 function loadChat(){
   const k=chatKey();
@@ -2514,20 +2537,30 @@ const SET_SECTIONS=[
   ['security','Güvenlik & Halüsinasyon'],['cache','Cache Yönetimi'],
   ['devmode','Geliştirici Modu']
 ];
+// Advanced sections are hidden unless Developer Mode is on — a normal user
+// only sees Provider / Security / Developer Mode, so the system always runs at
+// its optimal defaults and can't be misconfigured by accident.
+const ADV_SECTIONS=new Set(['prompt','retrieval','memory','context','vectordb','cache']);
+function visibleSections(){
+  return SET_SECTIONS.filter(([id])=>state.devMode||!ADV_SECTIONS.has(id));
+}
 function buildSettingsNav(){
   const nav=$('#settingsNav');
   nav.innerHTML='';
-  SET_SECTIONS.forEach(([id,label])=>{
+  visibleSections().forEach(([id,label])=>{
     const b=document.createElement('button');
     b.className='set-nav-item'+(id===state.activeSetSec?' active':'');
+    b.dataset.sec=id;
     b.textContent=label;
     b.onclick=()=>selectSetSection(id);
     nav.appendChild(b);
   });
 }
 function selectSetSection(id){
+  // Never land on a hidden (dev-only) section when dev mode is off.
+  if(ADV_SECTIONS.has(id)&&!state.devMode) id='provider';
   state.activeSetSec=id;
-  $$('.set-nav-item').forEach((b,i)=>b.classList.toggle('active',SET_SECTIONS[i][0]===id));
+  $$('.set-nav-item').forEach(b=>b.classList.toggle('active',b.dataset.sec===id));
   $$('.set-section').forEach(s=>s.classList.toggle('active',s.dataset.sec===id));
   if(id==='cache') loadCacheStats();
 }
@@ -2589,6 +2622,16 @@ function renderSettings(){
   /* devmode */
   $('#devToggle').classList.toggle('on',state.devMode);
   $('#devToggle').setAttribute('aria-checked',state.devMode);
+  applyDevModeUI();
+}
+/* Reflect Developer Mode across settings: hide advanced nav items + sections
+   and show the explanatory card when it's on. */
+function applyDevModeUI(){
+  buildSettingsNav();
+  if(ADV_SECTIONS.has(state.activeSetSec)&&!state.devMode) selectSetSection('provider');
+  else selectSetSection(state.activeSetSec);
+  const card=$('#devInfoCard');
+  if(card) card.classList.toggle('hide',!state.devMode);
 }
 function refreshPromptSelect(){
   const sc=state.schema||MOCK_SCHEMA;
@@ -2835,11 +2878,12 @@ function bindEvents(){
     dt.setAttribute('aria-checked',state.devMode);
     LS.set('ragart-devmode',state.devMode);
     refreshPromptSelect();
+    applyDevModeUI();           // show/hide advanced sections + info card
     $('#promptDevHint').textContent=state.devMode
       ?'Geliştirici Modu açık — tüm stratejiler görünür.'
       :'multi_query ve custom için Geliştirici Modu\'nu açın.';
     toast(state.devMode?'info':'info','Geliştirici Modu '+(state.devMode?'açık':'kapalı'),
-      state.devMode?'İleri stratejiler ve ham telemetri görünür.':'İleri seçenekler gizlendi.');
+      state.devMode?'İleri ayarlar ve ham telemetri görünür.':'İleri ayarlar gizlendi — sistem optimum varsayılanlarla çalışır.');
   };
   dt.onclick=toggleDev;
   dt.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleDev(); } };

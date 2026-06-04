@@ -113,7 +113,7 @@ models/
 
 # Local Claude Code config / session data
 .claude/
-
+.agents/
 # Generated evaluation reports
 tests/evaluation/reports/*.md
 tests/evaluation/reports/*.json

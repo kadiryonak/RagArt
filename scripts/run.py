@@ -12,8 +12,9 @@ import os
 import sys
 import subprocess
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# This script lives in scripts/; put the PROJECT ROOT (its parent) on the path
+# so `config` and `src` import correctly when run as `python scripts/run.py`.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.settings import settings
 from src.utils import StatusEmoji
@@ -115,7 +116,8 @@ def start_web_server() -> bool:
     print("-" * 60)
     
     try:
-        subprocess.run([sys.executable, "app.py"], check=True)
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        subprocess.run([sys.executable, os.path.join(root, "app.py")], check=True)
     except KeyboardInterrupt:
         print(f"\n\n{StatusEmoji.SUCCESS} Server stopped")
         return True
