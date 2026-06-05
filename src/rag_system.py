@@ -2,6 +2,7 @@
 Main RAG (Retrieval-Augmented Generation) system implementation.
 """
 
+import hashlib
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -266,9 +267,13 @@ class TurkishRAGSystem:
         
         # Split documents into chunks
         split_docs = self.embedding_manager.split_documents(documents)
-        
+
+        # Stamp each chunk with its source file's content hash so a later
+        # incremental sync can tell whether a same-named file actually changed.
+        self._stamp_content_hash(split_docs, self._content_hash_by_source(documents))
+
         logger.info(f"{StatusEmoji.DOCUMENT} Created {len(split_docs)} text chunks")
-        
+
         # Clear existing collection
         try:
             self.chroma_client.delete_collection("turkish_rag_collection")
@@ -289,27 +294,69 @@ class TurkishRAGSystem:
 
         logger.info(f"{StatusEmoji.SUCCESS} Vector store created successfully!")
 
+    @staticmethod
+    def _content_hash_by_source(documents: List[Document]) -> Dict[str, str]:
+        """Map each source filename → a stable hash of its extracted content.
+
+        Pages are concatenated in item_index order so the hash depends only on
+        text, not on load order. Used by sync_index to detect a same-named file
+        whose CONTENT changed (edited in place, or re-OCR'd with new settings).
+        """
+        from collections import defaultdict
+
+        buckets: Dict[str, list] = defaultdict(list)
+        for d in documents:
+            src = d.metadata.get("source")
+            if src is None:
+                continue
+            buckets[src].append((d.metadata.get("item_index", 0), d.page_content))
+
+        out: Dict[str, str] = {}
+        for src, items in buckets.items():
+            items.sort(key=lambda t: t[0])
+            h = hashlib.sha1()
+            for _, content in items:
+                h.update((content or "").encode("utf-8", "ignore"))
+                h.update(b"\x00")
+            out[src] = h.hexdigest()
+        return out
+
+    @staticmethod
+    def _stamp_content_hash(chunks: List[Document], hashes: Dict[str, str]) -> None:
+        """Write each chunk's source content_hash into its metadata (in place)."""
+        for c in chunks:
+            c.metadata["content_hash"] = hashes.get(c.metadata.get("source"), "")
+
     def sync_index(self) -> Dict[str, Any]:
         """Incrementally sync the vector store with the files on disk.
 
-        Only files NEW to the index are embedded; files removed from disk
-        have their chunks deleted; unchanged files are left untouched so
-        their (expensive) embeddings are reused as-is. This keeps reindex
-        cheap as the knowledge base grows.
+        Embeds only what actually changed:
+          - NEW files (not in the index) → embedded.
+          - CHANGED files (same name, different content hash — e.g. edited in
+            place or re-OCR'd with better settings) → old chunks dropped + new
+            chunks re-embedded.
+          - REMOVED files → their chunks deleted.
+          - UNCHANGED files → left untouched (expensive embeddings reused).
 
-        Change detection is by filename. Editing a file in place (same
-        name, new content) is NOT picked up — use create_vector_store()
-        for a full rebuild in that case.
+        This is per-workspace (operates on this system's own collection) and
+        per-file, so adding one document or improving one file's OCR no longer
+        forces a full rebuild of the whole knowledge base.
+
+        Change detection is by content hash (see _content_hash_by_source).
+        Chunks indexed before content_hash existed have no stored hash; those
+        are treated as unchanged (not re-embedded) until the next full rebuild
+        stamps them — so upgrading never triggers a surprise mass re-embed.
 
         Returns:
-            Summary dict: mode / added / removed / added_chunks.
+            Summary dict: mode / added / removed / updated / added_chunks.
         """
         # No existing collection yet → nothing to diff against, full build.
         if self.vector_store is None:
             self.create_vector_store()
-            return {"mode": "full", "added": [], "removed": [], "added_chunks": 0}
+            return {"mode": "full", "added": [], "removed": [], "updated": [],
+                    "added_chunks": 0}
 
-        # 1. Which source files are already indexed?
+        # 1. Which source files are already indexed, and at what content hash?
         try:
             existing = self.vector_store.get(include=["metadatas"])
         except Exception as e:
@@ -319,52 +366,63 @@ class TurkishRAGSystem:
             )
             self.create_vector_store()
             return {"mode": "full-rebuild", "added": [], "removed": [],
-                    "added_chunks": 0}
+                    "updated": [], "added_chunks": 0}
 
-        indexed = {
-            (m or {}).get("source") for m in (existing.get("metadatas") or [])
-        }
+        indexed_hash: Dict[str, Optional[str]] = {}
+        for m in (existing.get("metadatas") or []):
+            src = (m or {}).get("source")
+            if src and src not in indexed_hash:
+                indexed_hash[src] = (m or {}).get("content_hash") or None
+        indexed = set(indexed_hash)
         indexed.discard(None)
 
-        # 2. Which source files are on disk now?
+        # 2. Which source files are on disk now, and at what content hash?
         documents = self.document_loader.load_all()
-        by_source: Dict[str, List[Document]] = {}
-        for d in documents:
-            by_source.setdefault(d.metadata.get("source"), []).append(d)
-        disk = set(by_source)
+        disk_hash = self._content_hash_by_source(documents)
+        disk = set(disk_hash)
         disk.discard(None)
 
         to_add = disk - indexed
         to_remove = indexed - disk
+        # Changed = present in both but the content hash differs. Skip legacy
+        # chunks with no stored hash (treat as unchanged) to avoid a mass
+        # re-embed on first sync after upgrading.
+        to_update = {
+            s for s in (disk & indexed)
+            if indexed_hash.get(s) is not None
+            and disk_hash.get(s) != indexed_hash.get(s)
+        }
 
-        # 3. Drop chunks of files no longer on disk.
-        if to_remove:
-            stale = self.vector_store.get(
-                where={"source": {"$in": sorted(to_remove)}}
-            )
+        # 3. Drop chunks of removed files AND of changed files (re-embedded below).
+        drop = to_remove | to_update
+        if drop:
+            stale = self.vector_store.get(where={"source": {"$in": sorted(drop)}})
             stale_ids = stale.get("ids") or []
             if stale_ids:
                 self.vector_store.delete(ids=stale_ids)
             logger.info(
-                f"{StatusEmoji.INFO} Reindex: removed {len(to_remove)} "
-                f"file(s) from the index"
+                f"{StatusEmoji.INFO} Reindex: removed {len(to_remove)} file(s), "
+                f"refreshing {len(to_update)} changed file(s)"
             )
 
-        # 4. Split everything once; embed + add only the NEW files' chunks.
+        # 4. Split everything once; stamp hashes; embed only new + changed files.
         all_chunks = (
             self.embedding_manager.split_documents(documents) if documents else []
         )
+        self._stamp_content_hash(all_chunks, disk_hash)
+
+        embed_sources = to_add | to_update
         added_chunks = 0
-        if to_add:
+        if embed_sources:
             new_chunks = [
-                c for c in all_chunks if c.metadata.get("source") in to_add
+                c for c in all_chunks if c.metadata.get("source") in embed_sources
             ]
             if new_chunks:
                 self.vector_store.add_documents(new_chunks)
                 added_chunks = len(new_chunks)
             logger.info(
-                f"{StatusEmoji.SUCCESS} Reindex: added {len(to_add)} new "
-                f"file(s), {added_chunks} chunks"
+                f"{StatusEmoji.SUCCESS} Reindex: {len(to_add)} new + "
+                f"{len(to_update)} changed file(s), {added_chunks} chunks embedded"
             )
 
         # 5. Rebuild the in-memory retrievers (BM25) over ALL current chunks —
@@ -375,6 +433,7 @@ class TurkishRAGSystem:
             "mode": "incremental",
             "added": sorted(to_add),
             "removed": sorted(to_remove),
+            "updated": sorted(to_update),
             "added_chunks": added_chunks,
         }
 

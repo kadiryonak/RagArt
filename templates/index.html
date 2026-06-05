@@ -2537,10 +2537,12 @@ async function doReindex(full=false){
   if(sync&&String(sync.mode).indexOf('full')===0){
     msg=cnt+' dosya tam yeniden indekslendi.';
   }else if(sync){
-    const a=(sync.added||[]).length, r=(sync.removed||[]).length;
-    msg=(a||r)
-      ? (a?a+' yeni dosya eklendi':'')+((a&&r)?', ':'')+(r?r+' dosya kaldırıldı':'')+'.'
-      : 'Bilgi tabanı zaten güncel — değişiklik yok.';
+    const a=(sync.added||[]).length, r=(sync.removed||[]).length, u=(sync.updated||[]).length;
+    const parts=[];
+    if(a) parts.push(a+' yeni dosya eklendi');
+    if(u) parts.push(u+' dosya güncellendi');
+    if(r) parts.push(r+' dosya kaldırıldı');
+    msg=parts.length ? parts.join(', ')+'.' : 'Bilgi tabanı zaten güncel — değişiklik yok.';
   }
   toast('success','İndeksleme tamamlandı',msg);
 }
