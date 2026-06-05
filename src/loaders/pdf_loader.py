@@ -34,6 +34,13 @@ from src.loaders.base import BaseLoader
 
 logger = logging.getLogger(__name__)
 
+# pypdf logs an ERROR for every page that uses a CJK CMap it can't decode
+# (e.g. "/90ms-RKSJ-H not implemented yet", "/KSCms-UHC-H not implemented
+# yet"). Those pages fail `looks_like_text` and route to OCR anyway, so the
+# messages are pure noise — silence them so the console isn't flooded with
+# alarming-looking errors during indexing.
+logging.getLogger("pypdf._cmap").setLevel(logging.CRITICAL)
+
 
 # ── Extraction cache ───────────────────────────────────────────────────
 # OCR is expensive (seconds per page). Without a cache it re-runs on every

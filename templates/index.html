@@ -966,6 +966,14 @@ input[type=range]{flex:1;accent-color:var(--accent)}
                 </div>
                 <div class="fhint">Yeniden sıralama öncesi kaç aday getirilsin. Yüksek değer = daha iyi kapsama, daha yavaş.</div>
               </div>
+              <div class="field">
+                <label class="check-row">
+                  <input type="checkbox" id="setRelevanceJudge">
+                  <span class="ctxt">İlgililik yargıcı (LLM)
+                    <span class="ct-hint">Getirilen parçalar her zaman anlamsal bir filtreden geçer; bu seçenek ek olarak LLM'e "bunlardan hangileri soruyla ilgili?" diye sorar. Daha isabetli ama her soruda ekstra bir LLM çağrısı (maliyet + gecikme).</span>
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -1397,7 +1405,7 @@ const DEFAULT_SETTINGS = {
   llmParams:{temperature:0.2,max_tokens:1024},
   promptStrategy:'direct', customRole:'', customPrompt:'',
   memoryStrategy:'none', memoryK:6,
-  retrievalStrategy:'hybrid', rerank:false, rerankFetchK:20,
+  retrievalStrategy:'hybrid', rerank:false, rerankFetchK:20, relevanceJudge:false,
   contextDeduplicate:false, contextReorder:false, contextMaxTokens:4000,
   allowGeneralKnowledge:false
 };
@@ -1540,6 +1548,7 @@ function buildHeaders(){
   h['X-Retrieval-Strategy']=s.retrievalStrategy;
   h['X-Rerank']=String(s.rerank);
   h['X-Rerank-Fetch-K']=String(s.rerankFetchK);
+  h['X-Relevance-Judge']=String(s.relevanceJudge);
   h['X-Context-Deduplicate']=String(s.contextDeduplicate);
   h['X-Context-Reorder']=String(s.contextReorder);
   h['X-Context-Max-Tokens']=String(s.contextMaxTokens);
@@ -2609,6 +2618,7 @@ function renderSettings(){
   $('#setRerankK').value=s.rerankFetchK;
   $('#rerankKVal').textContent=s.rerankFetchK;
   $('#rerankKField').style.opacity=s.rerank?'1':'.5';
+  $('#setRelevanceJudge').checked=s.relevanceJudge;
   /* memory */
   fillSelect($('#setMemory'),sc.memory_strategies,s.memoryStrategy);
   $('#setMemoryK').value=s.memoryK;
@@ -2874,6 +2884,7 @@ function bindEvents(){
     saveSettings();
   };
   $('#setRerankK').oninput=e=>{ state.settings.rerankFetchK=+e.target.value; $('#rerankKVal').textContent=e.target.value; saveSettings(); };
+  $('#setRelevanceJudge').onchange=e=>{ state.settings.relevanceJudge=e.target.checked; saveSettings(); };
   $('#setMemory').onchange=e=>{
     state.settings.memoryStrategy=e.target.value;
     $('#memoryKField').classList.toggle('hide',e.target.value==='none');

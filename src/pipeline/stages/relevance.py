@@ -23,9 +23,14 @@ class RelevanceGateStage(PipelineStage):
 
     def run(self, state: QueryState) -> QueryState:
         rag = state.rag
-        score = rag.calculate_relevance_score(
-            state.request.question, state.docs,
-        )
+        # RelevanceFilterStage already scored every chunk and stashed the best;
+        # reuse it to avoid re-embedding. Falls back to a fresh compute if the
+        # filter stage didn't run (e.g. a custom pipeline).
+        score = state.extra_meta.get("_relevance_max")
+        if score is None:
+            score = rag.calculate_relevance_score(
+                state.request.question, state.docs,
+            )
         state.relevance_score = score
         logger.info("Relevance score: %.3f", score)
 

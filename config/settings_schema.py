@@ -151,6 +151,7 @@ class RequestSettings:
     retrieval_strategy: Optional[str] = None  # 'dense' | 'sparse' | 'hybrid' | None
     rerank: bool = False                       # cross-encoder rerank toggle
     rerank_fetch_k: int = 20                   # aday sayısı
+    relevance_judge: bool = False              # LLM second-pass relevance filter
     memory_strategy: Optional[str] = None      # 'none' | 'sliding_window' | 'summary_buffer' | 'vector'
     history: list = field(default_factory=list)  # list[dict] {role, content}
     deduplicate_context: bool = False           # redundancy filter (cosine sim)
@@ -227,6 +228,7 @@ def parse_request_settings(headers) -> RequestSettings:
     dedup = _bool_header("X-Context-Deduplicate")
     reorder = _bool_header("X-Context-Reorder")
     allow_general_kb = _bool_header("X-Allow-General-Knowledge")
+    relevance_judge = _bool_header("X-Relevance-Judge")
 
     prompt_strategy = (headers.get("X-Prompt-Strategy") or "").strip().lower() or None
 
@@ -275,6 +277,7 @@ def parse_request_settings(headers) -> RequestSettings:
         retrieval_strategy=strategy,
         rerank=rerank,
         rerank_fetch_k=rerank_fetch_k,
+        relevance_judge=relevance_judge,
         memory_strategy=mem,
         history=history,
         deduplicate_context=dedup,
