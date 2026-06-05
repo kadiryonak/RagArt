@@ -866,6 +866,13 @@ input[type=range]{flex:1;accent-color:var(--accent)}
           </button>
           <span class="hint">Dosya ekledikten / sildikten sonra basın.</span>
         </div>
+        <div class="reindex-row">
+          <button class="btn ghost" id="reindexFullBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+            Tam Yeniden İndeksle
+          </button>
+          <span class="hint">Aynı isimli dosyanın <b>içeriği değiştiyse</b> (yeniden tarama, OCR iyileştirmesi) bunu kullan — her dosyayı sıfırdan gömer.</span>
+        </div>
       </div>
     </div>
     <!-- status bar -->
@@ -1677,8 +1684,8 @@ const API = {
     try{ return await this.req('POST','/delete-file',{filename:name}); }
     catch(e){ notifyMock(); await delay(250); return {ok:true}; }
   },
-  async reindex(){
-    try{ return await this.req('POST','/reindex',{}); }
+  async reindex(full=false){
+    try{ return await this.req('POST','/reindex',full?{full:true}:{}); }
     catch(e){ notifyMock(); await delay(1600); return {ok:true}; }
   },
   async cacheStats(){
@@ -2512,18 +2519,18 @@ async function uploadOne(file,ext){
     toast('error','Yükleme başarısız',(e&&e.message)||file.name);
   }
 }
-async function doReindex(){
+async function doReindex(full=false){
   const ws=state.activeWorkspace;
   const cnt=(ws._files||[]).length;
   if(!cnt){ toast('warning','İndekslenecek dosya yok','Önce dosya yükleyin.'); return; }
   showReindexBanner(cnt);
   ws.status='reindexing'; updateStatusBar();
-  $('#reindexBtn').disabled=true;
-  const res=await API.reindex();
+  $('#reindexBtn').disabled=true; $('#reindexFullBtn').disabled=true;
+  const res=await API.reindex(full);
   ws.status='ready';
   hideReindexBanner();
   updateStatusBar();
-  $('#reindexBtn').disabled=false;
+  $('#reindexBtn').disabled=false; $('#reindexFullBtn').disabled=false;
   // Incremental reindex: report what actually changed.
   const sync=res&&res.sync;
   let msg=cnt+' dosya indekslendi.';
@@ -2836,7 +2843,8 @@ function bindEvents(){
   ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{ e.preventDefault(); dz.classList.add('drag'); }));
   ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{ e.preventDefault(); dz.classList.remove('drag'); }));
   dz.addEventListener('drop',e=>{ if(e.dataTransfer&&e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
-  $('#reindexBtn').onclick=doReindex;
+  $('#reindexBtn').onclick=()=>doReindex(false);
+  $('#reindexFullBtn').onclick=()=>doReindex(true);
   const selAll=$('#selectAllFiles');
   if(selAll) selAll.onchange=()=>{
     const files=(state.activeWorkspace&&state.activeWorkspace._files)||[];

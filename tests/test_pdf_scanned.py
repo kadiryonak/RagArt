@@ -130,3 +130,53 @@ class TestPDFLoaderScanned:
         docs = PDFLoader().load(Path("mixed.pdf"))
         assert len(docs) == 2
         assert {d.metadata["page"] for d in docs} == {1, 3}
+
+
+class TestOCRPage:
+    """The OCR rendering path (easyocr mocked — the engine isn't installed in CI)."""
+
+    def test_confidence_filtering_drops_low_score_boxes(self, monkeypatch):
+        import src.loaders.pdf_loader as pl
+
+        # Fake pdfium page. Pillow isn't installed in CI, so _preprocess_for_ocr
+        # falls back to the raw image object — exactly the defensive path.
+        page = MagicMock()
+        page.render.return_value.to_pil.return_value = [[255, 255], [255, 255]]
+        pdfium_doc = {0: page}  # supports pdfium_doc[idx]
+
+        reader = MagicMock()
+        reader.readtext.return_value = [
+            ([[0, 0]], "Optimizasyon", 0.95),
+            ([[0, 0]], "x9soup", 0.10),     # below _OCR_MIN_CONF → dropped
+            ([[0, 0]], "algoritma", 0.80),
+        ]
+        monkeypatch.setattr(pl, "_get_ocr_reader", lambda: reader)
+
+        text = pl._ocr_page(pdfium_doc, 0)
+        assert "Optimizasyon" in text and "algoritma" in text
+        assert "x9soup" not in text
+        # Must request per-box confidence (detail=1, paragraph=False).
+        kwargs = reader.readtext.call_args.kwargs
+        assert kwargs["detail"] == 1 and kwargs["paragraph"] is False
+
+    def test_ocr_config_version_busts_cache(self):
+        # Same file + OCR on, different OCR config version → different cache key,
+        # so improved OCR settings force a fresh extraction instead of stale text.
+        import src.loaders.pdf_loader as pl
+
+        class _Stat:
+            st_size = 10
+            st_mtime = 123.0
+
+        fp = MagicMock()
+        fp.stat.return_value = _Stat()
+        fp.resolve.return_value = "X"
+
+        monkeypatch_v1 = pl._OCR_CONFIG_VERSION
+        k1 = pl._cache_key(fp, True)
+        try:
+            pl._OCR_CONFIG_VERSION = monkeypatch_v1 + 1
+            k2 = pl._cache_key(fp, True)
+        finally:
+            pl._OCR_CONFIG_VERSION = monkeypatch_v1
+        assert k1 != k2
