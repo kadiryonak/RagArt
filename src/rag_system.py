@@ -725,6 +725,66 @@ class TurkishRAGSystem:
             logger.warning("Semantic relevance fallback failed: %s", e)
             return [0.0] * len(documents)
 
+    def semantic_groundedness(
+        self, answer: str, documents: List[Document],
+    ) -> float:
+        """Sentence-level faithfulness of `answer` against the retrieved chunks.
+
+        Splits the answer into sentences and, for each, takes its best cosine
+        similarity to any retrieved chunk; the score is the mean of those
+        per-sentence bests. This is far more discriminative than embedding the
+        whole answer as one vector (which regresses to the mean and underscores
+        multi-faceted answers — e.g. a "compare A vs B" answer whose single
+        vector is only moderately close to any one single-topic chunk).
+
+        Robust where lexical groundedness fails: OCR'd PDFs corrupt characters
+        (not just diacritics), so a clean answer can share zero exact tokens
+        with the context yet still be faithful — embeddings see through that.
+
+        Returns 0.0 on any failure (mocked/zero embeddings) so the caller keeps
+        the lexical score.
+        """
+        if not answer or not documents:
+            return 0.0
+        try:
+            import re
+
+            import numpy as np
+
+            sentences = [
+                s.strip() for s in re.split(r"[.!?\n]+", answer)
+                if len(s.strip()) > 15
+            ]
+            if not sentences:
+                sentences = [answer.strip()]
+
+            doc_mat = []
+            for vec in self.embedding_manager.embed_documents(
+                [d.page_content for d in documents]
+            ):
+                v = np.asarray(vec, dtype=float)
+                n = float(np.linalg.norm(v))
+                if n:
+                    doc_mat.append(v / n)
+            if not doc_mat:
+                return 0.0
+            doc_mat = np.vstack(doc_mat)  # (n_docs, dim), unit rows
+
+            sent_vecs = self.embedding_manager.embed_documents(sentences)
+            per_sentence = []
+            for sv in sent_vecs:
+                s = np.asarray(sv, dtype=float)
+                sn = float(np.linalg.norm(s))
+                if sn == 0.0:
+                    continue
+                best = float(np.max(doc_mat @ (s / sn)))
+                per_sentence.append(max(0.0, best))
+
+            return sum(per_sentence) / len(per_sentence) if per_sentence else 0.0
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Semantic groundedness failed: %s", e)
+            return 0.0
+
     def filter_relevant_documents(
         self, question: str, documents: List[Document],
     ) -> "tuple[List[Document], Dict[str, Any]]":
