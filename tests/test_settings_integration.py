@@ -22,6 +22,7 @@ def client(monkeypatch):
 
     def stub_ask(question, *, k=5, llm_provider=None, llm_params=None,
                  retrieval_strategy=None, rerank=False, rerank_fetch_k=20,
+                 relevance_judge=False,
                  selected_files=None,
                  history=None, memory_strategy=None,
                  deduplicate_context=False, reorder_context=False,
@@ -36,6 +37,7 @@ def client(monkeypatch):
         captured["retrieval_strategy"] = retrieval_strategy
         captured["rerank"] = rerank
         captured["rerank_fetch_k"] = rerank_fetch_k
+        captured["relevance_judge"] = relevance_judge
         captured["selected_files"] = selected_files or []
         captured["history"] = history or []
         captured["memory_strategy"] = memory_strategy

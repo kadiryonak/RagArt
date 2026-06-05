@@ -53,6 +53,10 @@ class QueryRequest:
     retrieval_strategy: Optional[str] = None
     rerank: bool = False
     rerank_fetch_k: int = 20
+    # Optional second relevance pass: after the heuristic filter, ask the LLM
+    # which surviving chunks are actually relevant. Off by default (extra
+    # latency + cost); enabled from Developer Mode.
+    relevance_judge: bool = False
     # Empty tuple = retrieve from the whole knowledge base. Otherwise
     # retrieval is restricted to documents whose source filename is listed.
     selected_files: tuple = ()

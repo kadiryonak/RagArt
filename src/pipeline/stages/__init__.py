@@ -4,13 +4,14 @@ Stage akışı (Pipeline'a verilirken bu sırada):
     1. GuardStage         prompt injection check; block → guard response
     2. ClassifyStage      adaptive routing; greeting → fast-path response
     3. CacheLookupStage   exact + semantic cache lookup; hit → cached response
-    4. RetrievalStage     resolve strategy, retrieve (with multi-query fan-out)
-    5. RelevanceGateStage low score → fallback response (insufficient_data)
-    6. ContextStage       docs → formatted context string
-    7. MemoryStage        history + memory_strategy → memory_context
-    8. ExecuteStage       strategy.execute() → answer
-    9. ResponseStage      build final result dict
-    10. CacheWriteStage   write to response_cache + semantic_cache (only on success)
+    4. RetrievalStage       resolve strategy, retrieve (with multi-query fan-out)
+    5. RelevanceFilterStage drop per-chunk irrelevant docs (+ optional LLM judge)
+    6. RelevanceGateStage   low score → fallback response (insufficient_data)
+    7. ContextStage         docs → formatted context string
+    8. MemoryStage          history + memory_strategy → memory_context
+    9. ExecuteStage         strategy.execute() → answer
+    10. ResponseStage       build final result dict
+    11. CacheWriteStage     write to response_cache + semantic_cache (only on success)
 
 Stage'ler birbiriyle SADECE QueryState üzerinden konuşur. Doğrudan
 methods/refs paylaşılmaz — test edilebilirlik için kritik.
@@ -22,6 +23,7 @@ from src.pipeline.stages.guard import GuardStage
 from src.pipeline.stages.classify import ClassifyStage
 from src.pipeline.stages.cache_lookup import CacheLookupStage
 from src.pipeline.stages.retrieval import RetrievalStage
+from src.pipeline.stages.relevance_filter import RelevanceFilterStage
 from src.pipeline.stages.relevance import RelevanceGateStage
 from src.pipeline.stages.context import ContextStage
 from src.pipeline.stages.memory import MemoryStage
@@ -35,6 +37,7 @@ __all__ = [
     "ClassifyStage",
     "CacheLookupStage",
     "RetrievalStage",
+    "RelevanceFilterStage",
     "RelevanceGateStage",
     "ContextStage",
     "MemoryStage",

@@ -90,3 +90,11 @@ class TestGroundednessScorer:
         assert GroundednessScorer.is_grounded(0.3) is True
         assert GroundednessScorer.is_grounded(0.29) is False
         assert GroundednessScorer.is_grounded(0.9) is True
+
+    def test_diacritic_insensitive_overlap(self):
+        # OCR drops Turkish diacritics; folding makes the comparison match.
+        score = GroundednessScorer.score(
+            "işçi arılar gözcü arılar kaşif arılar",   # clean answer
+            "isci arilar gozcu arilar kasif arilar",   # OCR'd context
+        )
+        assert score == 1.0

@@ -23,6 +23,7 @@ from src.pipeline.stages import (
     ExecuteStage,
     GuardStage,
     MemoryStage,
+    RelevanceFilterStage,
     RelevanceGateStage,
     ResponseStage,
     RetrievalStage,
@@ -449,6 +450,59 @@ class TestRelevanceGateStage:
         out = RelevanceGateStage().run(s)
         assert out.response is not None
         s.rag._fallback_response.assert_called_once()
+
+
+# ─── RelevanceFilterStage ──────────────────────────────────────────────
+
+
+class TestRelevanceFilterStage:
+    def _state_with_docs(self, n=3, **req_kw):
+        s = _state(**req_kw)
+        s.docs = [_FakeDoc(f"doc{i}", f"f{i}.json") for i in range(n)]
+        return s
+
+    def test_empty_docs_is_noop(self):
+        s = _state()
+        s.docs = []
+        out = RelevanceFilterStage().run(s)
+        assert out.docs == []
+        s.rag.filter_relevant_documents.assert_not_called()
+
+    def test_filters_docs_and_stashes_score(self):
+        s = self._state_with_docs(3)
+        kept = [s.docs[0]]
+        s.rag.filter_relevant_documents.return_value = (
+            kept, {"kept": 1, "dropped": 2, "max_score": 0.42},
+        )
+        out = RelevanceFilterStage().run(s)
+        assert out.docs == kept
+        assert out.extra_meta["_relevance_max"] == 0.42
+        assert out.extra_meta["relevance_filter"]["dropped"] == 2
+
+    def test_judge_off_by_default(self):
+        s = self._state_with_docs(2)
+        s.rag.filter_relevant_documents.return_value = (s.docs, {"max_score": 0.5})
+        RelevanceFilterStage().run(s)
+        s.rag.llm_judge_relevance.assert_not_called()
+
+    def test_judge_runs_when_enabled(self):
+        s = self._state_with_docs(3, relevance_judge=True)
+        s.rag.filter_relevant_documents.return_value = (
+            list(s.docs), {"kept": 3, "dropped": 0, "max_score": 0.5},
+        )
+        s.rag.llm_judge_relevance.return_value = [s.docs[0]]
+        out = RelevanceFilterStage().run(s)
+        s.rag.llm_judge_relevance.assert_called_once()
+        assert out.docs == [s.docs[0]]
+
+    def test_gate_reuses_stashed_score(self):
+        s = _state()
+        s.docs = [_FakeDoc("doc", "f.json")]
+        s.extra_meta["_relevance_max"] = 0.8
+        s.rag.RELEVANCE_THRESHOLD = 0.5
+        out = RelevanceGateStage().run(s)
+        assert out.relevance_score == 0.8
+        s.rag.calculate_relevance_score.assert_not_called()
 
 
 # ─── MemoryStage ───────────────────────────────────────────────────────

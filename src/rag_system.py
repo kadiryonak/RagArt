@@ -122,6 +122,23 @@ class TurkishRAGSystem:
     
     # Relevance threshold for determining if RAG context is sufficient
     RELEVANCE_THRESHOLD = 0.1
+
+    # Cosine floor below which a chunk is NOT counted as semantically relevant.
+    # paraphrase-multilingual-MiniLM gives ~0.30+ for genuinely related Turkish
+    # text and ~0.10 for unrelated, so 0.30 rescues real hits the lexical signal
+    # misses (Turkish morphology, OCR noise) without letting distractors through.
+    SEMANTIC_RELEVANCE_FLOOR = 0.30
+
+    # Per-document KEEP bars for the relevance FILTER (RelevanceFilterStage).
+    # A retrieved chunk is kept if it is semantically close (cosine ≥
+    # KEEP_SEMANTIC) OR it is a strong surface-word match (lexical overlap ≥
+    # KEEP_LEXICAL, e.g. an exact name/term). Everything else — chunks that
+    # only share a generic word like "algoritma" with the question — is dropped
+    # so irrelevant files never reach the context. KEEP_SEMANTIC is below
+    # SEMANTIC_RELEVANCE_FLOOR on purpose: the filter only needs "plausibly
+    # related" to keep a candidate; the gate still makes the final accept call.
+    RELEVANCE_KEEP_SEMANTIC = 0.25
+    RELEVANCE_KEEP_LEXICAL = 0.50
     
     def __init__(
         self,
@@ -642,10 +659,175 @@ class TurkishRAGSystem:
         # plus a few unrelated ones would score ~0.12 (mean) and be rejected,
         # even though one chunk matches at 0.5. max() asks the right question:
         # "is there at least one relevant document?"
-        return max(
+        lexical = max(
             (calculate_word_overlap(question, doc.page_content) for doc in documents),
             default=0.0,
         )
+        if lexical >= self.RELEVANCE_THRESHOLD:
+            # Already passes on surface words — skip the embedding cost.
+            return lexical
+
+        # Lexical overlap is brittle: Turkish is agglutinative ("karşılaştırması"
+        # ≠ "karşılaştırma"), and OCR'd PDFs (e.g. scanned lecture notes) are
+        # noisy, so a genuinely relevant chunk can score ~0 on raw word match
+        # and get wrongly rejected as "yeterli bilgi yok". Back it up with an
+        # embedding-cosine signal that captures meaning, not surface form. Only
+        # a confidently-similar chunk (>= SEMANTIC_RELEVANCE_FLOOR) counts, so
+        # this rescues real hits without opening the gate to distractors.
+        semantic = self._semantic_relevance(question, documents)
+        if semantic >= self.SEMANTIC_RELEVANCE_FLOOR:
+            return max(lexical, semantic)
+        return lexical
+
+    def _semantic_relevance(self, question: str, documents: List[Document]) -> float:
+        """Max embedding cosine similarity between the question and any document.
+
+        Returns 0.0 on any failure (missing/zero embeddings, mocked manager in
+        tests) so the caller transparently falls back to the lexical signal.
+        """
+        return max(self._semantic_scores(question, documents), default=0.0)
+
+    def _semantic_scores(
+        self, question: str, documents: List[Document],
+    ) -> List[float]:
+        """Per-document cosine similarity (clamped to ≥0) of the question vs.
+        each document's embedding.
+
+        Returns a list of zeros on any failure (missing/zero embeddings, mocked
+        manager in tests) — callers treat an all-zero result as "semantic
+        signal unavailable" and fall back to the lexical signal so behaviour is
+        never worse than the pure word-overlap baseline.
+        """
+        if not documents:
+            return []
+        try:
+            import numpy as np
+
+            q = np.asarray(
+                self.embedding_manager.embed_query(question), dtype=float,
+            )
+            qn = float(np.linalg.norm(q))
+            if qn == 0.0:
+                return [0.0] * len(documents)
+
+            doc_vecs = self.embedding_manager.embed_documents(
+                [doc.page_content for doc in documents],
+            )
+            scores: List[float] = []
+            for vec in doc_vecs:
+                v = np.asarray(vec, dtype=float)
+                vn = float(np.linalg.norm(v))
+                scores.append(
+                    max(0.0, float(np.dot(q, v) / (qn * vn))) if vn else 0.0
+                )
+            return scores
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Semantic relevance fallback failed: %s", e)
+            return [0.0] * len(documents)
+
+    def filter_relevant_documents(
+        self, question: str, documents: List[Document],
+    ) -> "tuple[List[Document], Dict[str, Any]]":
+        """Drop retrieved chunks that aren't relevant to the question.
+
+        The discriminator is per-document: a chunk survives if it is
+        semantically close (cosine ≥ RELEVANCE_KEEP_SEMANTIC) OR a strong
+        surface-word match (lexical overlap ≥ RELEVANCE_KEEP_LEXICAL). This
+        removes "found a generic shared word" distractors — e.g. a networking
+        page that mentions "algoritma" surfacing for an optimization question —
+        so irrelevant files never reach the LLM context.
+
+        Adaptive by design: it filters per chunk, so it behaves the same whether
+        the knowledge base has 2 files or 200 — with few files it no longer
+        returns everything, only the chunks that actually match.
+
+        Safety: if the embedding signal is unavailable (all-zero, e.g. the model
+        failed to load), it keeps every document — never worse than today. If
+        the bars would drop everything, it keeps the single best candidate and
+        lets the downstream gate make the final accept/reject decision.
+
+        Returns (kept_documents, info) where info carries telemetry counts and
+        the best relevance score (so the gate can reuse it without recomputing).
+        """
+        info: Dict[str, Any] = {"kept": len(documents), "dropped": 0, "max_score": 0.0}
+        if not documents:
+            return documents, info
+
+        lexical = [calculate_word_overlap(question, d.page_content) for d in documents]
+        semantic = self._semantic_scores(question, documents)
+        combined = [max(l, s) for l, s in zip(lexical, semantic)]
+        info["max_score"] = max(combined, default=0.0)
+
+        # Semantic signal unavailable → don't risk over-pruning on lexical alone.
+        if not semantic or max(semantic) <= 0.0:
+            return documents, info
+
+        kept = [
+            d for d, l, s in zip(documents, lexical, semantic)
+            if s >= self.RELEVANCE_KEEP_SEMANTIC or l >= self.RELEVANCE_KEEP_LEXICAL
+        ]
+        if not kept:
+            # Nothing cleared the bar. Keep the single best candidate so the
+            # gate — not the filter — decides whether to answer or fall back.
+            best_idx = max(range(len(combined)), key=combined.__getitem__)
+            kept = [documents[best_idx]]
+
+        info["kept"] = len(kept)
+        info["dropped"] = len(documents) - len(kept)
+        return kept, info
+
+    def llm_judge_relevance(
+        self,
+        question: str,
+        documents: List[Document],
+        *,
+        llm_provider: Optional[BaseLLMProvider] = None,
+        llm_params: Optional[Dict[str, Any]] = None,
+    ) -> List[Document]:
+        """Ask the LLM which of `documents` are relevant to `question`.
+
+        A second, semantic relevance pass for when the heuristic filter can't
+        tell distractors apart (the user-requested "ask the AI which chunks are
+        related" fallback). The model sees each chunk as a numbered snippet and
+        returns the numbers that genuinely help answer the question; we keep
+        those, preserving order.
+
+        Defensive: on any failure (no provider, unparseable reply, no numbers)
+        it returns the input unchanged — the judge can only ever be a refinement
+        of the heuristic result, never a way to lose all context.
+        """
+        provider = llm_provider or self.llm_provider
+        if provider is None or len(documents) <= 1:
+            return documents
+
+        snippets = []
+        for i, doc in enumerate(documents, 1):
+            text = doc.page_content.strip().replace("\n", " ")
+            if len(text) > 400:
+                text = text[:400] + "…"
+            snippets.append(f"[{i}] {text}")
+
+        prompt = (
+            "Aşağıda bir soru ve numaralandırılmış metin parçaları var. "
+            "Soruyu yanıtlamaya GERÇEKTEN yardımcı olan parçaların "
+            "numaralarını virgülle ayırarak yaz (örn: 1, 3). Hiçbiri "
+            "ilgili değilse 'yok' yaz. Sadece numaraları döndür, açıklama "
+            "yapma.\n\n"
+            f"Soru: {question}\n\n"
+            "Parçalar:\n" + "\n".join(snippets) + "\n\nİlgili parçalar:"
+        )
+
+        try:
+            reply = provider.generate(prompt, **(llm_params or {}))
+        except Exception as e:  # pragma: no cover - network/provider dependent
+            logger.warning("LLM relevance judge call failed: %s", e)
+            return documents
+
+        import re
+        idxs = {int(n) for n in re.findall(r"\d+", reply or "")}
+        keep = [d for i, d in enumerate(documents, 1) if i in idxs]
+        # Unparseable / out-of-range / empty → don't prune.
+        return keep if keep else documents
     
     def _build_memory(
         self,
@@ -759,8 +941,8 @@ class TurkishRAGSystem:
             from src.pipeline import Pipeline
             from src.pipeline.stages import (
                 GuardStage, ClassifyStage, CacheLookupStage,
-                RetrievalStage, RelevanceGateStage, ContextStage,
-                MemoryStage, ExecuteStage, ResponseStage,
+                RetrievalStage, RelevanceFilterStage, RelevanceGateStage,
+                ContextStage, MemoryStage, ExecuteStage, ResponseStage,
                 GroundednessStage, CacheWriteStage,
             )
             cls._PIPELINE_STAGES = Pipeline([
@@ -768,6 +950,7 @@ class TurkishRAGSystem:
                 ClassifyStage(),
                 CacheLookupStage(),
                 RetrievalStage(),
+                RelevanceFilterStage(),
                 RelevanceGateStage(),
                 ContextStage(),
                 MemoryStage(),
@@ -788,6 +971,7 @@ class TurkishRAGSystem:
         retrieval_strategy: Optional[str] = None,
         rerank: bool = False,
         rerank_fetch_k: int = 20,
+        relevance_judge: bool = False,
         selected_files: Optional[List[str]] = None,
         history: Optional[List[ConversationTurn]] = None,
         memory_strategy: Optional[str] = None,
@@ -820,7 +1004,8 @@ class TurkishRAGSystem:
         request = self._build_query_request(
             question, k=k, llm_provider=llm_provider, llm_params=llm_params,
             retrieval_strategy=retrieval_strategy, rerank=rerank,
-            rerank_fetch_k=rerank_fetch_k, selected_files=selected_files,
+            rerank_fetch_k=rerank_fetch_k, relevance_judge=relevance_judge,
+            selected_files=selected_files,
             history=history, memory_strategy=memory_strategy,
             deduplicate_context=deduplicate_context,
             reorder_context=reorder_context,
@@ -874,6 +1059,7 @@ class TurkishRAGSystem:
             retrieval_strategy=kw.get("retrieval_strategy"),
             rerank=kw.get("rerank", False),
             rerank_fetch_k=kw.get("rerank_fetch_k", 20),
+            relevance_judge=kw.get("relevance_judge", False),
             selected_files=tuple(kw.get("selected_files") or ()),
             history=tuple(kw.get("history") or ()),
             memory_strategy=kw.get("memory_strategy"),
@@ -942,8 +1128,9 @@ class TurkishRAGSystem:
         from src.pipeline import QueryState
         from src.pipeline.stages import (
             GuardStage, ClassifyStage, CacheLookupStage, RetrievalStage,
-            RelevanceGateStage, ContextStage, MemoryStage, ExecuteStage,
-            ResponseStage, GroundednessStage, CacheWriteStage,
+            RelevanceFilterStage, RelevanceGateStage, ContextStage,
+            MemoryStage, ExecuteStage, ResponseStage, GroundednessStage,
+            CacheWriteStage,
         )
 
         request = self._build_query_request(question, **kwargs)
@@ -953,8 +1140,8 @@ class TurkishRAGSystem:
         # Run everything up to (but not including) the LLM call.
         try:
             for stage in (GuardStage(), ClassifyStage(), CacheLookupStage(),
-                          RetrievalStage(), RelevanceGateStage(),
-                          ContextStage(), MemoryStage()):
+                          RetrievalStage(), RelevanceFilterStage(),
+                          RelevanceGateStage(), ContextStage(), MemoryStage()):
                 state = stage(state)
                 if state.response is not None:
                     break

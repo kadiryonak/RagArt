@@ -44,9 +44,26 @@ class GroundednessStage(PipelineStage):
 
         from src.guard import GroundednessScorer
 
-        score = GroundednessScorer.score(state.answer, state.context)
+        # Lexical token overlap — fast, but blind to paraphrase and to OCR text
+        # whose surface form differs from the clean LLM answer.
+        lexical = GroundednessScorer.score(state.answer, state.context)
+
+        # Semantic backup: cosine of the answer vs the retrieved chunks. Rescues
+        # genuinely-grounded answers the lexical signal misses (Turkish
+        # morphology, OCR noise) — the same false-negative the relevance gate had.
+        semantic = 0.0
+        if lexical < GroundednessScorer.GROUNDED_THRESHOLD and state.docs:
+            try:
+                semantic = state.rag._semantic_relevance(state.answer, state.docs)
+            except Exception:  # pragma: no cover - defensive
+                semantic = 0.0
+
+        score = max(lexical, semantic)
         state.response["groundedness_score"] = round(score, 3)
         if not GroundednessScorer.is_grounded(score):
             state.response["groundedness_warning"] = True
-            logger.warning("Low groundedness: %.3f", score)
+            logger.warning(
+                "Low groundedness: %.3f (lexical=%.3f, semantic=%.3f)",
+                score, lexical, semantic,
+            )
         return state

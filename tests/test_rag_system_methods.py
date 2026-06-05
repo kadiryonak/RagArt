@@ -418,7 +418,115 @@ class TestRelevanceScore:
     def test_out_of_domain_stays_zero(self, rag):
         docs = [_doc("a.json", "Python programlama dili"), _doc("b.json", "Algoritma")]
         # Neither doc shares a word with the question → still rejected.
+        # _FakeEmbeddings returns zero vectors → semantic signal is 0 too.
         assert rag.calculate_relevance_score("deprem nedir", docs) == 0.0
+
+    def test_semantic_rescues_lexical_miss(self, rag):
+        # No shared words (Turkish morphology / OCR noise), so lexical = 0, but
+        # the embedding cosine is high → the gate should still pass.
+        rag.embedding_manager.embed_query = lambda q: [1.0, 0.0]
+        rag.embedding_manager.embed_documents = lambda texts: [[1.0, 0.0]] * len(texts)
+        docs = [_doc("opt.pdf", "tamamen farkli kelimeler burada")]
+        score = rag.calculate_relevance_score("karşılaştırması yap", docs)
+        assert score >= rag.SEMANTIC_RELEVANCE_FLOOR
+
+    def test_semantic_below_floor_does_not_rescue(self, rag):
+        # Weak cosine (< floor) must NOT open the gate to a distractor.
+        import math
+        rag.embedding_manager.embed_query = lambda q: [1.0, 0.0]
+        # ~0.2 cosine → below the 0.30 floor.
+        rag.embedding_manager.embed_documents = lambda texts: [
+            [math.cos(math.radians(78)), math.sin(math.radians(78))]
+        ] * len(texts)
+        docs = [_doc("noise.pdf", "alakasiz icerik")]
+        assert rag.calculate_relevance_score("deprem nedir", docs) == 0.0
+
+
+# ── filter_relevant_documents (per-doc relevance filter) ───────────────
+
+
+class TestFilterRelevantDocuments:
+    def test_empty_is_noop(self, rag):
+        kept, info = rag.filter_relevant_documents("soru", [])
+        assert kept == []
+        assert info["dropped"] == 0
+
+    def test_semantic_unavailable_keeps_all(self, rag):
+        # _FakeEmbeddings → zero vectors → signal unavailable → never prune.
+        docs = [_doc("a.pdf", "x"), _doc("b.pdf", "y")]
+        kept, info = rag.filter_relevant_documents("soru", docs)
+        assert len(kept) == 2
+        assert info["dropped"] == 0
+
+    def test_drops_semantically_distant_chunk(self, rag):
+        import math
+        rag.embedding_manager.embed_query = lambda q: [1.0, 0.0]
+        # doc1 aligned with query (cos 1.0), doc2 orthogonal (cos 0.0).
+        vecs = {"opt.pdf": [1.0, 0.0], "net.pdf": [0.0, 1.0]}
+        rag.embedding_manager.embed_documents = lambda texts: [
+            vecs["opt.pdf"] if "abc" in t else vecs["net.pdf"] for t in texts
+        ]
+        docs = [_doc("opt.pdf", "abc genetik algoritma"), _doc("net.pdf", "router")]
+        kept, info = rag.filter_relevant_documents("abc genetik", docs)
+        assert [d.metadata["source"] for d in kept] == ["opt.pdf"]
+        assert info["dropped"] == 1
+
+    def test_keeps_strong_lexical_even_if_semantic_low(self, rag):
+        # Low (but available) cosine yet full word overlap → keep via lexical.
+        rag.embedding_manager.embed_query = lambda q: [1.0, 0.0]
+        # cos ≈ 0.10 — signal present but well below KEEP_SEMANTIC (0.25).
+        rag.embedding_manager.embed_documents = lambda texts: [[0.1, 1.0]] * len(texts)
+        # Question words all present in the doc → lexical 1.0 ≥ KEEP_LEXICAL.
+        docs = [_doc("cv.txt", "kadir yönak"), _doc("x.txt", "kadir yönak")]
+        kept, info = rag.filter_relevant_documents("kadir yönak", docs)
+        assert len(kept) == 2
+        assert info["dropped"] == 0
+
+    def test_keeps_single_best_when_nothing_passes(self, rag):
+        import math
+        rag.embedding_manager.embed_query = lambda q: [1.0, 0.0]
+        # Both below KEEP_SEMANTIC (0.25): cos(80°)≈0.17, cos(85°)≈0.087.
+        rag.embedding_manager.embed_documents = lambda texts: [
+            [math.cos(math.radians(80)), math.sin(math.radians(80))],
+            [math.cos(math.radians(85)), math.sin(math.radians(85))],
+        ]
+        docs = [_doc("a.pdf", "zzz"), _doc("b.pdf", "qqq")]
+        kept, info = rag.filter_relevant_documents("deprem", docs)
+        assert len(kept) == 1  # best one kept, gate decides
+        assert kept[0].metadata["source"] == "a.pdf"
+
+
+# ── llm_judge_relevance (optional LLM second pass) ─────────────────────
+
+
+class TestLLMJudgeRelevance:
+    def _docs(self):
+        return [_doc("a.pdf", "alfa"), _doc("b.pdf", "beta"), _doc("c.pdf", "gama")]
+
+    def test_no_provider_returns_input(self, rag):
+        rag.llm_provider = None
+        docs = self._docs()
+        assert rag.llm_judge_relevance("soru", docs) is docs
+
+    def test_parses_indices(self, rag):
+        provider = MagicMock()
+        provider.generate.return_value = "1, 3"
+        kept = rag.llm_judge_relevance("soru", self._docs(), llm_provider=provider)
+        assert [d.metadata["source"] for d in kept] == ["a.pdf", "c.pdf"]
+
+    def test_unparseable_reply_keeps_all(self, rag):
+        provider = MagicMock()
+        provider.generate.return_value = "yok"
+        docs = self._docs()
+        kept = rag.llm_judge_relevance("soru", docs, llm_provider=provider)
+        assert len(kept) == 3
+
+    def test_provider_error_keeps_all(self, rag):
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("boom")
+        docs = self._docs()
+        kept = rag.llm_judge_relevance("soru", docs, llm_provider=provider)
+        assert kept is docs
 
 
 # ── search with per-file selection ─────────────────────────────────────
