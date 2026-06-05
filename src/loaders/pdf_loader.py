@@ -52,7 +52,7 @@ logging.getLogger("pypdf._cmap").setLevel(logging.CRITICAL)
 # Bump when the OCR pipeline changes (scale, preprocessing, confidence
 # filter, …) so existing caches are invalidated and PDFs are re-OCR'd with
 # the improved settings instead of returning the old, lower-quality text.
-_OCR_CONFIG_VERSION = 2
+_OCR_CONFIG_VERSION = 3
 
 
 def _cache_dir() -> Path:
@@ -125,7 +125,10 @@ def looks_like_text(text: str, *, min_words: int = 3, min_ratio: float = 0.5) ->
 # ── Lazy OCR engine (optional [ocr] extra) ─────────────────────────────
 
 _OCR_LANGS = ["tr", "en"]
-_OCR_SCALE = 4          # ~288 DPI — sharper glyphs for small/blurry scan text
+# ~240 DPI. A bit above the old 216 for crisper glyphs, but NOT so high that
+# OCR crawls — combined with mag_ratio it previously double-upscaled and made
+# a 26-page scan take minutes (looked like a reindex hang).
+_OCR_SCALE = 3.3
 _OCR_MIN_CONF = 0.4     # drop boxes the recognizer isn't confident about
 _ocr_reader = None      # easyocr.Reader singleton (heavy: build once)
 
@@ -184,7 +187,7 @@ def _ocr_page(pdfium_doc, idx: int) -> str:
     # (paragraph mode merges boxes and discards per-box confidence).
     results = reader.readtext(
         arr, detail=1, paragraph=False,
-        contrast_ths=0.05, adjust_contrast=0.7, mag_ratio=1.5,
+        contrast_ths=0.05, adjust_contrast=0.7,
     )
     lines = [
         txt for (_box, txt, conf) in results
