@@ -53,3 +53,33 @@ class TestGroundednessStage:
         st = _state(response={"source": "rag_system"}, context="x metni", answer="x metni")
         out = GroundednessStage()(st)
         assert isinstance(out.timings["groundedness"], float)
+
+    def test_diacritic_folding_grounds_ocr_text(self):
+        # Clean answer (with diacritics) vs OCR context (diacritics stripped).
+        # Lexical overlap would collapse without folding; folding rescues it.
+        st = _state(
+            response={"source": "rag_system"},
+            context="yapay ari kolonisi isci arilar gozcu arilar kasif arilar",
+            answer="Yapay arı kolonisi: işçi arılar, gözcü arılar, kaşif arılar.",
+        )
+        out = GroundednessStage()(st)
+        assert out.response["groundedness_score"] >= 0.3
+        assert "groundedness_warning" not in out.response
+
+    def test_semantic_rescues_low_lexical(self):
+        # No shared tokens at all → lexical 0, but a stubbed semantic signal
+        # (high cosine to the retrieved docs) lifts it over the threshold.
+        class _Rag:
+            def _semantic_relevance(self, answer, docs):
+                return 0.71
+
+        st = _state(
+            response={"source": "rag_system"},
+            context="bazı tamamen farklı sözcükler",
+            answer="bambaşka kelimeler içeren cümle",
+        )
+        st.rag = _Rag()
+        st.docs = [object()]  # non-empty → semantic path runs
+        out = GroundednessStage()(st)
+        assert out.response["groundedness_score"] == 0.71
+        assert "groundedness_warning" not in out.response

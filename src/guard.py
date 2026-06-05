@@ -138,10 +138,18 @@ class InputGuard:
 
 # ── GroundednessScorer ────────────────────────────────────────────────
 
+# Turkish diacritic → ASCII folding. OCR (and many scanned PDFs) drop or
+# mangle diacritics, so "arılar" in a clean answer never matches "arilar" in
+# the OCR'd context and lexical groundedness collapses to ~0. Folding both
+# sides to a common ASCII form makes the comparison diacritic-insensitive.
+_TR_FOLD = str.maketrans("çğıöşü", "cgiosu")
+
+
 def _tokenize(text: str) -> set:
-    """Basit Türkçe-uyumlu tokenizer — lowercase + non-alpha strip."""
+    """Basit Türkçe-uyumlu tokenizer — lowercase + diacritic-fold + non-alpha strip."""
+    folded = text.lower().translate(_TR_FOLD)
     return {
-        w for w in re.findall(r"[a-zçğıöşü0-9]+", text.lower(), re.UNICODE)
+        w for w in re.findall(r"[a-z0-9]+", folded, re.UNICODE)
         if len(w) > 2  # stopword-ish kısa kelimeleri atla
     }
 
