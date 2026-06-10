@@ -26,13 +26,21 @@ RagArt is an end-to-end RAG pipeline that goes beyond basic semantic search. It 
 
 </details>
 
-| Soru-Cevap Arayüzü | Ayarlar Paneli |
+| Çalışma Alanları | Soru-Cevap Arayüzü |
 |:---:|:---:|
-| ![QA Interface](docs/images/qa-interface.png) | ![Settings](docs/images/settings.png) |
+| ![Workspaces](docs/images/workspaces.png) | ![QA Interface](docs/images/qa-interface.png) |
 
-| Dosya Yönetimi | Farklı Soru Örneği |
+| Kaynak Belge Görüntüleyici | Dosya Yönetimi |
 |:---:|:---:|
-| ![File Manager](docs/images/file-manager.png) | ![Question Example](docs/images/question-example.png) |
+| ![Source Viewer](docs/images/source-viewer.png) | ![File Manager](docs/images/file-manager.png) |
+
+| Sağlayıcı & API Key (BYOK) | Retrieval & Reranker (Geliştirici) |
+|:---:|:---:|
+| ![Settings](docs/images/settings.png) | ![Developer Retrieval](docs/images/developer-retrieval.png) |
+
+| Geliştirici Modu | Sohbet Hafızası |
+|:---:|:---:|
+| ![Developer Mode](docs/images/developer-mode.png) | ![Chat Memory](docs/images/chat-memory.png) |
 
 ---
 
