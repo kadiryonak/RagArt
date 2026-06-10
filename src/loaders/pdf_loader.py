@@ -49,6 +49,12 @@ logging.getLogger("pypdf._cmap").setLevel(logging.CRITICAL)
 # the full extraction result keyed by file content (path+size+mtime) AND
 # OCR availability, so a PDF is OCR'd once, then loads instantly.
 
+# Bump when the OCR pipeline changes (scale, preprocessing, confidence
+# filter, …) so existing caches are invalidated and PDFs are re-OCR'd with
+# the improved settings instead of returning the old, lower-quality text.
+_OCR_CONFIG_VERSION = 3
+
+
 def _cache_dir() -> Path:
     try:
         from config.settings import settings
@@ -61,7 +67,11 @@ def _cache_dir() -> Path:
 
 def _cache_key(file_path: Path, ocr_on: bool) -> str:
     st = file_path.stat()
-    raw = f"{file_path.resolve()}|{st.st_size}|{int(st.st_mtime)}|ocr={ocr_on}"
+    ver = _OCR_CONFIG_VERSION if ocr_on else 0
+    raw = (
+        f"{file_path.resolve()}|{st.st_size}|{int(st.st_mtime)}"
+        f"|ocr={ocr_on}|ocrv={ver}"
+    )
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
@@ -115,7 +125,11 @@ def looks_like_text(text: str, *, min_words: int = 3, min_ratio: float = 0.5) ->
 # ── Lazy OCR engine (optional [ocr] extra) ─────────────────────────────
 
 _OCR_LANGS = ["tr", "en"]
-_OCR_SCALE = 3          # ~216 DPI — good OCR accuracy vs. speed
+# ~240 DPI. A bit above the old 216 for crisper glyphs, but NOT so high that
+# OCR crawls — combined with mag_ratio it previously double-upscaled and made
+# a 26-page scan take minutes (looked like a reindex hang).
+_OCR_SCALE = 3.3
+_OCR_MIN_CONF = 0.4     # drop boxes the recognizer isn't confident about
 _ocr_reader = None      # easyocr.Reader singleton (heavy: build once)
 
 
@@ -139,12 +153,46 @@ def _get_ocr_reader():
     return _ocr_reader
 
 
+def _preprocess_for_ocr(pil):
+    """Clean a rendered page image to make OCR more accurate.
+
+    Grayscale + autocontrast stretches faded/low-contrast scans (the common
+    failure mode — washed-out lecture-note photocopies) so glyph edges are
+    crisper. Kept deliberately gentle: no binarization/denoise, which can
+    destroy thin Turkish diacritics (ı/İ/ş/ğ) on already-clean pages. Falls
+    back to the original image if Pillow ops aren't available.
+    """
+    try:
+        from PIL import ImageOps
+        gray = ImageOps.grayscale(pil)
+        return ImageOps.autocontrast(gray, cutoff=1)
+    except Exception:
+        return pil
+
+
 def _ocr_page(pdfium_doc, idx: int) -> str:
-    """Render page `idx` to an image and OCR it. Returns extracted text."""
+    """Render page `idx` at high DPI, preprocess, OCR, and keep only
+    confident text. Returns the extracted text.
+
+    Confidence filtering is the key quality lever: easyocr emits a score per
+    detected box, and the low-score boxes are exactly the "glyph soup" that
+    corrupts the text layer (and tanks lexical groundedness). Dropping boxes
+    below _OCR_MIN_CONF removes that noise while keeping the real words.
+    """
     import numpy as np
     pil = pdfium_doc[idx].render(scale=_OCR_SCALE).to_pil()
+    arr = np.array(_preprocess_for_ocr(pil))
     reader = _get_ocr_reader()
-    lines = reader.readtext(np.array(pil), detail=0, paragraph=True)
+    # detail=1 → [bbox, text, confidence]; paragraph=False keeps the score
+    # (paragraph mode merges boxes and discards per-box confidence).
+    results = reader.readtext(
+        arr, detail=1, paragraph=False,
+        contrast_ths=0.05, adjust_contrast=0.7,
+    )
+    lines = [
+        txt for (_box, txt, conf) in results
+        if conf >= _OCR_MIN_CONF and txt.strip()
+    ]
     return "\n".join(lines).strip()
 
 

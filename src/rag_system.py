@@ -2,6 +2,8 @@
 Main RAG (Retrieval-Augmented Generation) system implementation.
 """
 
+import hashlib
+import os
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -148,6 +150,7 @@ class TurkishRAGSystem:
         chroma_db_path: str = "./chroma_db",
         embedding_model: Optional[str] = None,
         defer_sparse_build: bool = False,
+        distill_index: bool = False,
     ):
         """
         Initialize the RAG system.
@@ -169,6 +172,11 @@ class TurkishRAGSystem:
         self.api_key = api_key
         self.chroma_db_path = chroma_db_path
         self._defer_sparse_build = defer_sparse_build
+        # Optional LLM distillation of raw text before chunking (off by
+        # default; see src/distill.py). Enabled via constructor or RAG_DISTILL.
+        self.distill_index = distill_index or os.getenv(
+            "RAG_DISTILL", ""
+        ).strip().lower() in ("1", "true", "yes", "on")
         
         # Initialize ChromaDB client
         self.chroma_client = chromadb.PersistentClient(path=chroma_db_path)
@@ -249,26 +257,42 @@ class TurkishRAGSystem:
         self.create_vector_store()
         logger.info(f"{StatusEmoji.SUCCESS} RAG system ready!")
     
-    def create_vector_store(self) -> None:
+    def create_vector_store(self, distill: Optional[bool] = None) -> None:
         """
         Create the vector store from loaded documents.
-        
+
+        Args:
+            distill: Override the system's distill_index setting for this build
+                (None → use self.distill_index). When on, raw text is LLM-
+                distilled before chunking. See src/distill.py.
+
         Raises:
             ValueError: If no documents are loaded
         """
         logger.info(f"{StatusEmoji.DOCUMENT} Loading JSON data...")
         documents = self.document_loader.load_all()
-        
+
         if not documents:
             raise ValueError(
                 f"{StatusEmoji.ERROR} No documents loaded! Check your data folder: {self.data_folder}"
             )
-        
+
+        # Hash the RAW text BEFORE distillation so incremental sync compares
+        # disk content, not the (non-deterministic) distilled output.
+        raw_hashes = self._content_hash_by_source(documents)
+
+        # Optional: distill raw text with the LLM to shrink the index.
+        documents = self._maybe_distill(documents, distill)
+
         # Split documents into chunks
         split_docs = self.embedding_manager.split_documents(documents)
-        
+
+        # Stamp each chunk with its source file's RAW content hash so a later
+        # incremental sync can tell whether a same-named file actually changed.
+        self._stamp_content_hash(split_docs, raw_hashes)
+
         logger.info(f"{StatusEmoji.DOCUMENT} Created {len(split_docs)} text chunks")
-        
+
         # Clear existing collection
         try:
             self.chroma_client.delete_collection("turkish_rag_collection")
@@ -289,27 +313,118 @@ class TurkishRAGSystem:
 
         logger.info(f"{StatusEmoji.SUCCESS} Vector store created successfully!")
 
-    def sync_index(self) -> Dict[str, Any]:
+    def _maybe_distill(
+        self,
+        documents: List[Document],
+        override: Optional[bool] = None,
+        only_sources: Optional[set] = None,
+    ) -> List[Document]:
+        """LLM-distill raw text before chunking, when enabled.
+
+        Returns documents unchanged unless distillation is on AND a real LLM
+        provider is configured (the local echo provider can't distill, and its
+        canned output would be rejected by the guardrails anyway). When
+        `only_sources` is given, only those source files are distilled and the
+        rest pass through untouched — used by incremental sync so unchanged
+        files aren't needlessly re-distilled.
+        """
+        on = self.distill_index if override is None else override
+        if not on:
+            return documents
+        if self.model_type == "local":
+            logger.info(
+                f"{StatusEmoji.INFO} Distillation skipped: local provider has no LLM."
+            )
+            return documents
+
+        from src.distill import distill_documents
+
+        if only_sources is None:
+            logger.info(
+                f"{StatusEmoji.LOADING} Distilling {len(documents)} document(s) "
+                "before chunking..."
+            )
+            return distill_documents(documents, self.llm_provider, temperature=0.1)
+
+        # Distill only the named sources; keep the rest, preserving order.
+        targets = [d for d in documents if d.metadata.get("source") in only_sources]
+        if not targets:
+            return documents
+        logger.info(
+            f"{StatusEmoji.LOADING} Distilling {len(targets)} changed document(s) "
+            "before chunking..."
+        )
+        distilled = {
+            id(d): nd
+            for d, nd in zip(targets, distill_documents(
+                targets, self.llm_provider, temperature=0.1
+            ))
+        }
+        return [distilled.get(id(d), d) for d in documents]
+
+    @staticmethod
+    def _content_hash_by_source(documents: List[Document]) -> Dict[str, str]:
+        """Map each source filename → a stable hash of its extracted content.
+
+        Pages are concatenated in item_index order so the hash depends only on
+        text, not on load order. Used by sync_index to detect a same-named file
+        whose CONTENT changed (edited in place, or re-OCR'd with new settings).
+        """
+        from collections import defaultdict
+
+        buckets: Dict[str, list] = defaultdict(list)
+        for d in documents:
+            src = d.metadata.get("source")
+            if src is None:
+                continue
+            buckets[src].append((d.metadata.get("item_index", 0), d.page_content))
+
+        out: Dict[str, str] = {}
+        for src, items in buckets.items():
+            items.sort(key=lambda t: t[0])
+            h = hashlib.sha1()
+            for _, content in items:
+                h.update((content or "").encode("utf-8", "ignore"))
+                h.update(b"\x00")
+            out[src] = h.hexdigest()
+        return out
+
+    @staticmethod
+    def _stamp_content_hash(chunks: List[Document], hashes: Dict[str, str]) -> None:
+        """Write each chunk's source content_hash into its metadata (in place)."""
+        for c in chunks:
+            c.metadata["content_hash"] = hashes.get(c.metadata.get("source"), "")
+
+    def sync_index(self, distill: Optional[bool] = None) -> Dict[str, Any]:
         """Incrementally sync the vector store with the files on disk.
 
-        Only files NEW to the index are embedded; files removed from disk
-        have their chunks deleted; unchanged files are left untouched so
-        their (expensive) embeddings are reused as-is. This keeps reindex
-        cheap as the knowledge base grows.
+        Embeds only what actually changed:
+          - NEW files (not in the index) → embedded.
+          - CHANGED files (same name, different content hash — e.g. edited in
+            place or re-OCR'd with better settings) → old chunks dropped + new
+            chunks re-embedded.
+          - REMOVED files → their chunks deleted.
+          - UNCHANGED files → left untouched (expensive embeddings reused).
 
-        Change detection is by filename. Editing a file in place (same
-        name, new content) is NOT picked up — use create_vector_store()
-        for a full rebuild in that case.
+        This is per-workspace (operates on this system's own collection) and
+        per-file, so adding one document or improving one file's OCR no longer
+        forces a full rebuild of the whole knowledge base.
+
+        Change detection is by content hash (see _content_hash_by_source).
+        Chunks indexed before content_hash existed have no stored hash; those
+        are treated as unchanged (not re-embedded) until the next full rebuild
+        stamps them — so upgrading never triggers a surprise mass re-embed.
 
         Returns:
-            Summary dict: mode / added / removed / added_chunks.
+            Summary dict: mode / added / removed / updated / added_chunks.
         """
         # No existing collection yet → nothing to diff against, full build.
         if self.vector_store is None:
-            self.create_vector_store()
-            return {"mode": "full", "added": [], "removed": [], "added_chunks": 0}
+            self.create_vector_store(distill=distill)
+            return {"mode": "full", "added": [], "removed": [], "updated": [],
+                    "added_chunks": 0}
 
-        # 1. Which source files are already indexed?
+        # 1. Which source files are already indexed, and at what content hash?
         try:
             existing = self.vector_store.get(include=["metadatas"])
         except Exception as e:
@@ -317,54 +432,67 @@ class TurkishRAGSystem:
                 f"{StatusEmoji.WARNING} Could not read existing index "
                 f"({type(e).__name__}: {e}) — falling back to full rebuild."
             )
-            self.create_vector_store()
+            self.create_vector_store(distill=distill)
             return {"mode": "full-rebuild", "added": [], "removed": [],
-                    "added_chunks": 0}
+                    "updated": [], "added_chunks": 0}
 
-        indexed = {
-            (m or {}).get("source") for m in (existing.get("metadatas") or [])
-        }
+        indexed_hash: Dict[str, Optional[str]] = {}
+        for m in (existing.get("metadatas") or []):
+            src = (m or {}).get("source")
+            if src and src not in indexed_hash:
+                indexed_hash[src] = (m or {}).get("content_hash") or None
+        indexed = set(indexed_hash)
         indexed.discard(None)
 
-        # 2. Which source files are on disk now?
+        # 2. Which source files are on disk now, and at what content hash?
         documents = self.document_loader.load_all()
-        by_source: Dict[str, List[Document]] = {}
-        for d in documents:
-            by_source.setdefault(d.metadata.get("source"), []).append(d)
-        disk = set(by_source)
+        disk_hash = self._content_hash_by_source(documents)
+        disk = set(disk_hash)
         disk.discard(None)
 
         to_add = disk - indexed
         to_remove = indexed - disk
+        # Changed = present in both but the content hash differs. Skip legacy
+        # chunks with no stored hash (treat as unchanged) to avoid a mass
+        # re-embed on first sync after upgrading.
+        to_update = {
+            s for s in (disk & indexed)
+            if indexed_hash.get(s) is not None
+            and disk_hash.get(s) != indexed_hash.get(s)
+        }
 
-        # 3. Drop chunks of files no longer on disk.
-        if to_remove:
-            stale = self.vector_store.get(
-                where={"source": {"$in": sorted(to_remove)}}
-            )
+        # 3. Drop chunks of removed files AND of changed files (re-embedded below).
+        drop = to_remove | to_update
+        if drop:
+            stale = self.vector_store.get(where={"source": {"$in": sorted(drop)}})
             stale_ids = stale.get("ids") or []
             if stale_ids:
                 self.vector_store.delete(ids=stale_ids)
             logger.info(
-                f"{StatusEmoji.INFO} Reindex: removed {len(to_remove)} "
-                f"file(s) from the index"
+                f"{StatusEmoji.INFO} Reindex: removed {len(to_remove)} file(s), "
+                f"refreshing {len(to_update)} changed file(s)"
             )
 
-        # 4. Split everything once; embed + add only the NEW files' chunks.
+        # 4. Distill only the files we're about to (re-)embed, then split
+        #    everything once; stamp RAW hashes; embed only new + changed files.
+        embed_sources = to_add | to_update
+        documents = self._maybe_distill(documents, distill, only_sources=embed_sources)
         all_chunks = (
             self.embedding_manager.split_documents(documents) if documents else []
         )
+        self._stamp_content_hash(all_chunks, disk_hash)
+
         added_chunks = 0
-        if to_add:
+        if embed_sources:
             new_chunks = [
-                c for c in all_chunks if c.metadata.get("source") in to_add
+                c for c in all_chunks if c.metadata.get("source") in embed_sources
             ]
             if new_chunks:
                 self.vector_store.add_documents(new_chunks)
                 added_chunks = len(new_chunks)
             logger.info(
-                f"{StatusEmoji.SUCCESS} Reindex: added {len(to_add)} new "
-                f"file(s), {added_chunks} chunks"
+                f"{StatusEmoji.SUCCESS} Reindex: {len(to_add)} new + "
+                f"{len(to_update)} changed file(s), {added_chunks} chunks embedded"
             )
 
         # 5. Rebuild the in-memory retrievers (BM25) over ALL current chunks —
@@ -375,6 +503,7 @@ class TurkishRAGSystem:
             "mode": "incremental",
             "added": sorted(to_add),
             "removed": sorted(to_remove),
+            "updated": sorted(to_update),
             "added_chunks": added_chunks,
         }
 
@@ -724,6 +853,66 @@ class TurkishRAGSystem:
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("Semantic relevance fallback failed: %s", e)
             return [0.0] * len(documents)
+
+    def semantic_groundedness(
+        self, answer: str, documents: List[Document],
+    ) -> float:
+        """Sentence-level faithfulness of `answer` against the retrieved chunks.
+
+        Splits the answer into sentences and, for each, takes its best cosine
+        similarity to any retrieved chunk; the score is the mean of those
+        per-sentence bests. This is far more discriminative than embedding the
+        whole answer as one vector (which regresses to the mean and underscores
+        multi-faceted answers — e.g. a "compare A vs B" answer whose single
+        vector is only moderately close to any one single-topic chunk).
+
+        Robust where lexical groundedness fails: OCR'd PDFs corrupt characters
+        (not just diacritics), so a clean answer can share zero exact tokens
+        with the context yet still be faithful — embeddings see through that.
+
+        Returns 0.0 on any failure (mocked/zero embeddings) so the caller keeps
+        the lexical score.
+        """
+        if not answer or not documents:
+            return 0.0
+        try:
+            import re
+
+            import numpy as np
+
+            sentences = [
+                s.strip() for s in re.split(r"[.!?\n]+", answer)
+                if len(s.strip()) > 15
+            ]
+            if not sentences:
+                sentences = [answer.strip()]
+
+            doc_mat = []
+            for vec in self.embedding_manager.embed_documents(
+                [d.page_content for d in documents]
+            ):
+                v = np.asarray(vec, dtype=float)
+                n = float(np.linalg.norm(v))
+                if n:
+                    doc_mat.append(v / n)
+            if not doc_mat:
+                return 0.0
+            doc_mat = np.vstack(doc_mat)  # (n_docs, dim), unit rows
+
+            sent_vecs = self.embedding_manager.embed_documents(sentences)
+            per_sentence = []
+            for sv in sent_vecs:
+                s = np.asarray(sv, dtype=float)
+                sn = float(np.linalg.norm(s))
+                if sn == 0.0:
+                    continue
+                best = float(np.max(doc_mat @ (s / sn)))
+                per_sentence.append(max(0.0, best))
+
+            return sum(per_sentence) / len(per_sentence) if per_sentence else 0.0
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Semantic groundedness failed: %s", e)
+            return 0.0
 
     def filter_relevant_documents(
         self, question: str, documents: List[Document],

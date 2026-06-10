@@ -529,6 +529,27 @@ class TestLLMJudgeRelevance:
         assert kept is docs
 
 
+# ── semantic_groundedness (sentence-level faithfulness) ────────────────
+
+
+class TestSemanticGroundedness:
+    def test_empty_inputs_are_zero(self, rag):
+        assert rag.semantic_groundedness("", [_doc("a", "x")]) == 0.0
+        assert rag.semantic_groundedness("cevap", []) == 0.0
+
+    def test_zero_embeddings_return_zero(self, rag):
+        # _FakeEmbeddings → zero vectors → no signal.
+        docs = [_doc("a.pdf", "bir metin")]
+        assert rag.semantic_groundedness("baska bir cevap cumlesi", docs) == 0.0
+
+    def test_perfectly_aligned_sentences_score_high(self, rag):
+        # Query and every doc embed to the same unit vector → cosine 1.0.
+        rag.embedding_manager.embed_documents = lambda texts: [[1.0, 0.0]] * len(texts)
+        docs = [_doc("a.pdf", "destekleyici parça")]
+        ans = "Bu birinci cümledir burada. Bu da ikinci cümledir devamı."
+        assert rag.semantic_groundedness(ans, docs) == pytest.approx(1.0)
+
+
 # ── search with per-file selection ─────────────────────────────────────
 
 

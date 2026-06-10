@@ -70,7 +70,7 @@ class TestGroundednessStage:
         # No shared tokens at all → lexical 0, but a stubbed semantic signal
         # (high cosine to the retrieved docs) lifts it over the threshold.
         class _Rag:
-            def _semantic_relevance(self, answer, docs):
+            def semantic_groundedness(self, answer, docs):
                 return 0.71
 
         st = _state(

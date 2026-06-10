@@ -2,6 +2,7 @@
 Embedding management for the RAG system.
 """
 
+import math
 from typing import List, Optional
 
 try:
@@ -27,13 +28,55 @@ logger = get_logger(__name__)
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
+# ── Token budget ───────────────────────────────────────────────────────
+# Every embedding model has a hard input cap (its `max_seq_length`). For our
+# default paraphrase-multilingual-MiniLM-L12-v2 it is 128 wordpiece tokens —
+# anything past that is SILENTLY TRUNCATED at embed time, so the tail of an
+# oversized chunk never gets embedded and is invisible to retrieval. That is
+# why chunk length is measured in TOKENS (via the model's own tokenizer),
+# not characters: a char-sized chunk of dense Turkish easily blows past 128
+# tokens. See `EmbeddingManager.token_len`.
+DEFAULT_MAX_TOKENS = 128
+_RESERVED_TOKENS = 2            # [CLS] + [SEP] the model adds around the text
+# When the real tokenizer can't be loaded (offline CI, custom model) we
+# estimate tokens from characters. Turkish wordpieces are short, so this is
+# deliberately conservative (fewer chars/token → over-counts → smaller, safe
+# chunks rather than oversized ones).
+_FALLBACK_CHARS_PER_TOKEN = 3.0
+
+# Tokenizers are cached per model name so repeated managers/workspaces don't
+# reload them. `local_files_only=True` keeps it hermetic — never hits the
+# network; if the model isn't already in the HF cache we fall back cleanly.
+_TOKENIZER_CACHE: dict = {}
+
+
+def _load_tokenizer(model_name: str):
+    """Best-effort load of `model_name`'s tokenizer from the local HF cache.
+
+    Returns the tokenizer, or None if transformers isn't installed / the
+    model isn't cached. Never raises and never touches the network.
+    """
+    if model_name in _TOKENIZER_CACHE:
+        return _TOKENIZER_CACHE[model_name]
+    tok = None
+    try:
+        from transformers import AutoTokenizer
+        tok = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+    except Exception:
+        tok = None
+    _TOKENIZER_CACHE[model_name] = tok
+    return tok
+
+
 # ── Per-format chunking ────────────────────────────────────────────────
 # Different document formats have different natural structure, so one-size
 # chunking is suboptimal. Each entry tunes the recursive splitter for that
-# format: `scale` multiplies the manager's base chunk_size, and `separators`
-# are tried in order (earlier = preferred split point). Formats not listed
-# (or documents without a `format` tag) fall back to the manager default,
-# so behaviour is unchanged for anything we don't explicitly optimize.
+# format: `scale` multiplies the manager's base chunk_size (in TOKENS), and
+# `separators` are tried in order (earlier = preferred split point). The
+# scaled size is always capped at the model's token limit, so a "larger"
+# format can never produce a chunk that would be truncated at embed time.
+# Formats not listed (or documents without a `format` tag) fall back to the
+# manager default.
 #
 #   prose      → sentence-aware ("\n\n" > "\n" > ". " > ...) for pdf/docx/txt
 #   markdown   → split on headings first so a section stays whole
@@ -68,30 +111,61 @@ class EmbeddingManager:
         self,
         model_name: str = DEFAULT_MODEL,
         device: str = "cpu",
-        chunk_size: int = 800,
-        chunk_overlap: int = 150,
+        chunk_size: int = 110,
+        chunk_overlap: int = 20,
         split_strategy: str = "recursive",
+        max_tokens: Optional[int] = None,
     ):
         """
         Initialize the embedding manager.
-        
+
         Args:
             model_name: HuggingFace model name for embeddings
             device: Device to run the model on ('cpu' or 'cuda')
-            chunk_size: Size of text chunks
-            chunk_overlap: Overlap between chunks
+            chunk_size: Target chunk length in TOKENS (not characters). Capped
+                at the model's token limit so no chunk is truncated at embed
+                time. Default 110 leaves headroom under the 128-token cap.
+            chunk_overlap: Overlap between chunks, in tokens.
             split_strategy: 'recursive' (default) or 'semantic'
+            max_tokens: Override the embedding model's token limit. When None,
+                uses DEFAULT_MAX_TOKENS (correct for the default MiniLM model);
+                set this if you swap in a model with a different max_seq_length.
         """
         self.model_name = model_name
         self.device = device
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.split_strategy = split_strategy
-        
+        self.max_tokens = max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS
+
         self._embeddings: Optional[HuggingFaceEmbeddings] = None
         self._text_splitter: Optional[RecursiveCharacterTextSplitter] = None
         # Cache of per-format splitters, lazily built on first use.
         self._format_splitters: dict = {}
+
+    # ── Token measurement ──────────────────────────────────────────────
+    def token_len(self, text: str) -> int:
+        """Length of `text` in the embedding model's tokens.
+
+        Uses the real tokenizer when it's available in the local cache;
+        otherwise falls back to a conservative character-based estimate so
+        the splitter still keeps chunks safely under the token limit.
+        """
+        if not text:
+            return 0
+        tok = _load_tokenizer(self.model_name)
+        if tok is not None:
+            try:
+                ids = tok.encode(text, add_special_tokens=False)
+                if isinstance(ids, (list, tuple)):
+                    return len(ids)
+            except Exception:
+                pass
+        return max(1, math.ceil(len(text) / _FALLBACK_CHARS_PER_TOKEN))
+
+    def _size_cap(self) -> int:
+        """Max chunk size (tokens) that still fits the model after specials."""
+        return max(8, self.max_tokens - _RESERVED_TOKENS)
     
     @property
     def embeddings(self) -> HuggingFaceEmbeddings:
@@ -119,12 +193,14 @@ class EmbeddingManager:
             RecursiveCharacterTextSplitter instance
         """
         if self._text_splitter is None:
-            # Separators optimized for Turkish text
+            # Separators optimized for Turkish text. Length is measured in
+            # tokens (token_len) and capped at the model limit so chunks are
+            # never silently truncated when embedded.
             self._text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=self.chunk_size,
+                chunk_size=min(self.chunk_size, self._size_cap()),
                 chunk_overlap=self.chunk_overlap,
-                length_function=len,
-                separators=["\n\n", "\n", ".", "!", "?", ";", ",", " "]
+                length_function=self.token_len,
+                separators=["\n\n", "\n", ".", "!", "?", ";", ",", " ", ""]
             )
         return self._text_splitter
     
@@ -139,11 +215,15 @@ class EmbeddingManager:
         if cfg is None:
             return self.text_splitter
         if key not in self._format_splitters:
+            # Scale the base token budget for this format, but never exceed the
+            # model's token cap — a "larger" json chunk that got truncated at
+            # embed time would be worse than a slightly smaller intact one.
             size = max(1, int(self.chunk_size * cfg.get("scale", 1.0)))
+            size = min(size, self._size_cap())
             self._format_splitters[key] = RecursiveCharacterTextSplitter(
                 chunk_size=size,
                 chunk_overlap=self.chunk_overlap,
-                length_function=len,
+                length_function=self.token_len,
                 separators=cfg["separators"],
             )
         return self._format_splitters[key]

@@ -158,9 +158,17 @@ def _sync_rag(monkeypatch, indexed_meta, disk_docs):
     return rag
 
 
-def _doc(source: str):
+def _doc(source: str, content: str | None = None):
     from langchain_core.documents import Document
-    return Document(page_content=f"content of {source}", metadata={"source": source})
+    return Document(
+        page_content=content if content is not None else f"content of {source}",
+        metadata={"source": source},
+    )
+
+
+def _hash_of(rag, source: str, content: str) -> str:
+    """The content hash sync_index will compute for a single-page source."""
+    return rag._content_hash_by_source([_doc(source, content)])[source]
 
 
 class TestSyncIndex:
@@ -205,7 +213,118 @@ class TestSyncIndex:
         rag = _make_rag_with_stub(monkeypatch)
         rag.vector_store = None
         called = []
-        monkeypatch.setattr(rag, "create_vector_store", lambda: called.append(True))
+        monkeypatch.setattr(
+            rag, "create_vector_store", lambda distill=None: called.append(True)
+        )
         summary = rag.sync_index()
         assert summary["mode"] == "full"
         assert called == [True]
+
+    def test_changed_file_is_re_embedded(self, monkeypatch):
+        # Same filename, NEW content (e.g. re-OCR'd) → old chunks dropped and
+        # the file re-embedded; nothing else touched.
+        rag = _make_rag_with_stub(monkeypatch)
+        old_hash = _hash_of(rag, "doc.pdf", "eski ocr metni")
+        rag.vector_store = _SyncFakeVS([
+            {"source": "doc.pdf", "content_hash": old_hash},
+            {"source": "stable.json", "content_hash": _hash_of(rag, "stable.json", "x")},
+        ])
+        monkeypatch.setattr(
+            rag.document_loader, "load_all",
+            lambda: [_doc("doc.pdf", "YENI ve daha temiz ocr metni"),
+                     _doc("stable.json", "x")],
+        )
+        monkeypatch.setattr(
+            rag.embedding_manager, "split_documents", lambda docs: list(docs),
+        )
+        monkeypatch.setattr(rag, "_build_retrievers", lambda chunks: None)
+
+        summary = rag.sync_index()
+        assert summary["updated"] == ["doc.pdf"]
+        assert summary["added"] == [] and summary["removed"] == []
+        # doc.pdf (id0) dropped, then only doc.pdf re-embedded; stable.json kept.
+        assert rag.vector_store.deleted == ["id0"]
+        assert [d.metadata["source"] for d in rag.vector_store.added] == ["doc.pdf"]
+
+    def test_unchanged_hashed_file_is_noop(self, monkeypatch):
+        # Same filename + same content hash → not re-embedded.
+        rag = _make_rag_with_stub(monkeypatch)
+        h = _hash_of(rag, "doc.pdf", "ayni metin")
+        rag.vector_store = _SyncFakeVS([{"source": "doc.pdf", "content_hash": h}])
+        monkeypatch.setattr(
+            rag.document_loader, "load_all", lambda: [_doc("doc.pdf", "ayni metin")],
+        )
+        monkeypatch.setattr(
+            rag.embedding_manager, "split_documents", lambda docs: list(docs),
+        )
+        monkeypatch.setattr(rag, "_build_retrievers", lambda chunks: None)
+
+        summary = rag.sync_index()
+        assert summary["added"] == [] and summary["updated"] == []
+        assert rag.vector_store.added == [] and rag.vector_store.deleted == []
+
+
+class _DistillLLM:
+    """Fake provider returning a fixed, validly-shorter distillation."""
+
+    def __init__(self):
+        self.calls = 0
+        # ~220 chars: shorter than the long input but above the over-
+        # compression floor, so distill_text accepts it.
+        self.reply = "Damitilmis ama yeterince uzun gecerli bir ozet metni. " * 4
+
+    def generate(self, prompt, **p):
+        self.calls += 1
+        return self.reply
+
+
+class TestSyncDistill:
+    def test_distills_only_embedded_sources(self, monkeypatch):
+        # distill=True must distill ONLY the new/changed file, leave the
+        # unchanged one alone, and still hash by RAW content.
+        rag = _make_rag_with_stub(monkeypatch)
+        rag.model_type = "groq"             # non-local → distillation eligible
+        rag.llm_provider = _DistillLLM()
+
+        h = _hash_of(rag, "stable.json", "x")
+        rag.vector_store = _SyncFakeVS([{"source": "stable.json", "content_hash": h}])
+
+        long_new = "Bu yeni dosyanin uzun ham metni tekrar tekrar yaziliyor. " * 20
+        monkeypatch.setattr(
+            rag.document_loader, "load_all",
+            lambda: [_doc("stable.json", "x"), _doc("new.pdf", long_new)],
+        )
+        monkeypatch.setattr(
+            rag.embedding_manager, "split_documents", lambda docs: list(docs),
+        )
+        monkeypatch.setattr(rag, "_build_retrievers", lambda chunks: None)
+
+        summary = rag.sync_index(distill=True)
+
+        assert summary["added"] == ["new.pdf"]
+        added = rag.vector_store.added
+        assert [d.metadata["source"] for d in added] == ["new.pdf"]
+        # The embedded new file was distilled (tagged + shorter than raw)...
+        assert added[0].metadata.get("distilled") is True
+        assert len(added[0].page_content) < len(long_new)
+        # ...and exactly one LLM call was made (only for new.pdf).
+        assert rag.llm_provider.calls == 1
+
+    def test_local_provider_skips_distillation(self, monkeypatch):
+        rag = _make_rag_with_stub(monkeypatch)
+        rag.model_type = "local"            # echo provider can't distill
+        rag.llm_provider = _DistillLLM()
+
+        rag.vector_store = _SyncFakeVS([{"source": "old.json"}])
+        long_new = "uzun ham metin parcasi burada. " * 30
+        monkeypatch.setattr(
+            rag.document_loader, "load_all",
+            lambda: [_doc("old.json"), _doc("new.pdf", long_new)],
+        )
+        monkeypatch.setattr(
+            rag.embedding_manager, "split_documents", lambda docs: list(docs),
+        )
+        monkeypatch.setattr(rag, "_build_retrievers", lambda chunks: None)
+
+        rag.sync_index(distill=True)
+        assert rag.llm_provider.calls == 0  # never called for local

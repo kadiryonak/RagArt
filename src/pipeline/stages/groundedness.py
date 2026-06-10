@@ -48,13 +48,14 @@ class GroundednessStage(PipelineStage):
         # whose surface form differs from the clean LLM answer.
         lexical = GroundednessScorer.score(state.answer, state.context)
 
-        # Semantic backup: cosine of the answer vs the retrieved chunks. Rescues
-        # genuinely-grounded answers the lexical signal misses (Turkish
-        # morphology, OCR noise) — the same false-negative the relevance gate had.
+        # Semantic backup: sentence-level cosine of the answer vs the retrieved
+        # chunks. Rescues genuinely-grounded answers the lexical signal misses
+        # (Turkish morphology, OCR character corruption) — the same kind of
+        # false-negative the relevance gate had.
         semantic = 0.0
         if lexical < GroundednessScorer.GROUNDED_THRESHOLD and state.docs:
             try:
-                semantic = state.rag._semantic_relevance(state.answer, state.docs)
+                semantic = state.rag.semantic_groundedness(state.answer, state.docs)
             except Exception:  # pragma: no cover - defensive
                 semantic = 0.0
 
