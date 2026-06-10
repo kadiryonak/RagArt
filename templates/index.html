@@ -873,6 +873,13 @@ input[type=range]{flex:1;accent-color:var(--accent)}
           </button>
           <span class="hint">Aynı isimli dosyanın <b>içeriği değiştiyse</b> (yeniden tarama, OCR iyileştirmesi) bunu kullan — her dosyayı sıfırdan gömer.</span>
         </div>
+        <div class="reindex-row">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="setDistill">
+            <span>İndekslemeden önce LLM ile damıt</span>
+          </label>
+          <span class="hint">Ham metni, anlamı koruyarak küçültür — indeks daha küçük ve isabetli olur. Gömülen her dosya için bir LLM çağrısı maliyeti vardır (yerel sağlayıcıda atlanır).</span>
+        </div>
       </div>
     </div>
     <!-- status bar -->
@@ -1684,8 +1691,11 @@ const API = {
     try{ return await this.req('POST','/delete-file',{filename:name}); }
     catch(e){ notifyMock(); await delay(250); return {ok:true}; }
   },
-  async reindex(full=false){
-    try{ return await this.req('POST','/reindex',full?{full:true}:{}); }
+  async reindex(full=false, distill=false){
+    const body={};
+    if(full) body.full=true;
+    if(distill) body.distill=true;
+    try{ return await this.req('POST','/reindex',body); }
     catch(e){ notifyMock(); await delay(1600); return {ok:true}; }
   },
   async cacheStats(){
@@ -2526,7 +2536,8 @@ async function doReindex(full=false){
   showReindexBanner(cnt);
   ws.status='reindexing'; updateStatusBar();
   $('#reindexBtn').disabled=true; $('#reindexFullBtn').disabled=true;
-  const res=await API.reindex(full);
+  const distill=!!($('#setDistill')&&$('#setDistill').checked);
+  const res=await API.reindex(full,distill);
   ws.status='ready';
   hideReindexBanner();
   updateStatusBar();

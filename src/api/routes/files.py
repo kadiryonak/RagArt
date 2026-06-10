@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request, send_from_directory
-from werkzeug.utils import secure_filename
 
 from src.api import runtime
 from src.api.schemas import DeleteFileRequest, parse_body
@@ -16,6 +15,28 @@ from src.utils import StatusEmoji, get_logger
 logger = get_logger(__name__)
 
 bp = Blueprint("files", __name__)
+
+
+def safe_basename(filename: str) -> str | None:
+    """Path-traversal-safe filename check that PRESERVES Unicode.
+
+    werkzeug.secure_filename ASCII-strips non-Latin characters, which
+    silently breaks legitimate Turkish filenames (``Bilgisayarla_görme.json``
+    → ``Bilgisayarla_grme.json``). The file then can't be served, deleted or
+    matched against the indexed source name, so the UI shows
+    ``{"error":"Invalid filename"}`` for every document with a Turkish letter.
+
+    We only need traversal safety here, so reject anything with a directory
+    component, a null byte, or a parent reference and keep the rest as-is
+    (Unicode intact). Returns the basename, or None if the name is unsafe.
+    """
+    if not filename or "\x00" in filename:
+        return None
+    if filename in (".", "..") or "/" in filename or "\\" in filename:
+        return None
+    if os.path.basename(filename) != filename:
+        return None
+    return filename
 
 
 @bp.route("/upload", methods=["POST"])
@@ -36,7 +57,9 @@ def upload_file():
     filepath = None
     ws_id = runtime.current_workspace_id()
     try:
-        filename = secure_filename(file.filename)
+        filename = safe_basename(file.filename)
+        if not filename:
+            return jsonify({"error": "Invalid filename"}), 400
         ws_files_dir = runtime.workspace_manager.files_dir(ws_id)
         filepath = str(ws_files_dir / filename)
         file.save(filepath)
@@ -106,8 +129,10 @@ def delete_file():
     """Delete a file from the active workspace's knowledge base."""
     body = parse_body(DeleteFileRequest, request.get_json(silent=True))
 
-    # Secure the filename to prevent path traversal.
-    filename = secure_filename(body.filename)
+    # Secure the filename to prevent path traversal (Unicode-preserving).
+    filename = safe_basename(body.filename)
+    if not filename:
+        return jsonify({"error": "Invalid filename"}), 400
     ws_id = runtime.current_workspace_id()
     filepath = str(runtime.workspace_manager.files_dir(ws_id) / filename)
 
@@ -132,13 +157,19 @@ def reindex_documents():
     """Update the vector store for the active workspace.
 
     Body JSON (optional):
-        {"full": true}  → full rebuild (re-embeds every file). Needed when
-                           a file was edited in place (same name).
-        {} or omitted   → incremental sync: only new files are embedded,
-                           removed files are dropped. Cheap as the KB grows.
+        {"full": true}     → full rebuild (re-embeds every file). Needed when
+                             a file was edited in place (same name).
+        {} or omitted      → incremental sync: only new files are embedded,
+                             removed files are dropped. Cheap as the KB grows.
+        {"distill": true}  → LLM-distill raw text before chunking (shrinks the
+                             index; costs one LLM call per (re-)embedded file).
+                             None → use the system's RAG_DISTILL default.
     """
     data = request.get_json(silent=True) or {}
     full = bool(data.get("full"))
+    distill = data.get("distill")
+    if distill is not None:
+        distill = bool(distill)
     ws_id = runtime.current_workspace_id()
     try:
         runtime.system.status = f"Reindexing workspace '{ws_id}'..."
@@ -146,14 +177,15 @@ def reindex_documents():
 
         logger.info(
             f"{StatusEmoji.LOADING} Reindexing ws={ws_id} "
-            f"({'full' if full else 'incremental'})..."
+            f"({'full' if full else 'incremental'}"
+            f"{', distill' if distill else ''})..."
         )
         rag = runtime.get_rag_for(ws_id)
         if full:
-            rag.create_vector_store()
+            rag.create_vector_store(distill=distill)
             sync = {"mode": "full", "added": [], "removed": [], "added_chunks": 0}
         else:
-            sync = rag.sync_index()
+            sync = rag.sync_index(distill=distill)
         runtime.workspace_manager.touch(ws_id)
 
         # Invalidate response & semantic caches — knowledge base changed,
@@ -210,10 +242,11 @@ def list_files():
 def serve_source(filename):
     """Serve a raw source file so the UI can open the original document.
 
-    Path-traversal safe via secure_filename: any rewrite is refused.
+    Path-traversal safe via safe_basename: any directory component is refused.
+    Unicode is preserved so Turkish filenames (e.g. ``görme.json``) work.
     """
-    safe = secure_filename(filename)
-    if not safe or safe != filename:
+    safe = safe_basename(filename)
+    if not safe:
         return jsonify({"error": "Invalid filename"}), 400
 
     ws_id = request.args.get("ws") or runtime.current_workspace_id()

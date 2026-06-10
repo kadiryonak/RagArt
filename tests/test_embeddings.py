@@ -2,6 +2,8 @@
 Tests for the embeddings module.
 """
 
+import math
+
 import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -36,8 +38,10 @@ class TestEmbeddingManager:
         
         assert manager.model_name is not None
         assert manager.device == "cpu"
-        assert manager.chunk_size == 800
-        assert manager.chunk_overlap == 150
+        # Defaults are now token counts (not chars) and fit under the model cap.
+        assert manager.chunk_size == 110
+        assert manager.chunk_overlap == 20
+        assert manager.chunk_size <= manager.max_tokens
     
     def test_custom_configuration(self, mock_embeddings):
         """Test initialization with custom configuration."""
@@ -59,29 +63,42 @@ class TestEmbeddingManager:
         """Test text splitter is created correctly."""
         from src.embeddings import EmbeddingManager
         
-        manager = EmbeddingManager(chunk_size=500, chunk_overlap=50)
+        # 80 tokens is under the model cap, so it passes through unchanged.
+        manager = EmbeddingManager(chunk_size=80, chunk_overlap=10)
         splitter = manager.text_splitter
-        
+
         assert splitter is not None
-        assert splitter._chunk_size == 500
-        assert splitter._chunk_overlap == 50
+        assert splitter._chunk_size == 80
+        assert splitter._chunk_overlap == 10
+
+    def test_chunk_size_capped_at_model_limit(self, mock_embeddings):
+        # A chunk_size above the model's token limit must be clamped so chunks
+        # are never silently truncated when embedded.
+        from src.embeddings import EmbeddingManager
+
+        manager = EmbeddingManager(chunk_size=500, max_tokens=128)
+        assert manager.text_splitter._chunk_size == manager._size_cap()  # 126
+        assert manager.text_splitter._chunk_size <= 128
     
     def test_split_documents(self, mock_embeddings):
         """Test document splitting."""
         from src.embeddings import EmbeddingManager
         
         manager = EmbeddingManager(chunk_size=100, chunk_overlap=20)
-        
+
         # Create a document with content longer than chunk size
         long_content = "This is a test sentence. " * 20
         documents = [Document(page_content=long_content, metadata={"source": "test"})]
-        
+
         split_docs = manager.split_documents(documents)
-        
+
         assert len(split_docs) > 1  # Should be split into multiple chunks
-        
+
+        # Length is now measured in tokens — every chunk must stay within the
+        # token budget (size + overlap tolerance), guaranteeing no embed-time
+        # truncation regardless of how many characters that is.
         for doc in split_docs:
-            assert len(doc.page_content) <= 100 + 20  # Within chunk size + some tolerance
+            assert manager.token_len(doc.page_content) <= 100 + 20
     
     def test_embed_query(self, mock_embeddings):
         """Test query embedding."""
@@ -185,24 +202,33 @@ class TestPerFormatChunking:
 
     def test_markdown_splitter_is_heading_aware(self, mock_embeddings):
         from src.embeddings import EmbeddingManager
-        m = EmbeddingManager(chunk_size=400)
+        # Small base so scaling stays under the token cap and the relative
+        # sizing is observable (otherwise everything clamps to the cap).
+        m = EmbeddingManager(chunk_size=40)
         md = m._splitter_for("md")
         assert md is not m.text_splitter
         assert "\n## " in md._separators          # splits on headings first
-        assert md._chunk_size == 500              # 400 * 1.25 scale
+        assert md._chunk_size == 50               # 40 * 1.25 scale
 
     def test_json_splitter_uses_larger_chunks(self, mock_embeddings):
         from src.embeddings import EmbeddingManager
-        m = EmbeddingManager(chunk_size=400)
-        assert m._splitter_for("json")._chunk_size == 600  # 400 * 1.5
+        m = EmbeddingManager(chunk_size=40)
+        assert m._splitter_for("json")._chunk_size == 60  # 40 * 1.5
 
     def test_pdf_splitter_is_prose_and_cached(self, mock_embeddings):
         from src.embeddings import EmbeddingManager
-        m = EmbeddingManager(chunk_size=400)
+        m = EmbeddingManager(chunk_size=40)
         pdf = m._splitter_for("pdf")
-        assert pdf._chunk_size == 400             # scale 1.0
+        assert pdf._chunk_size == 40              # scale 1.0
         assert ". " in pdf._separators            # sentence-aware prose
         assert m._splitter_for("pdf") is pdf      # cached, not rebuilt
+
+    def test_format_scale_capped_at_token_limit(self, mock_embeddings):
+        from src.embeddings import EmbeddingManager
+        # Base already at the cap → the 1.5× json scale can't push past it.
+        m = EmbeddingManager(chunk_size=120, max_tokens=128)
+        assert m._splitter_for("json")._chunk_size == m._size_cap()
+        assert m._splitter_for("json")._chunk_size <= 128
 
     def test_split_documents_routes_by_format(self, mock_embeddings):
         from src.embeddings import EmbeddingManager
@@ -229,6 +255,41 @@ class TestPerFormatChunking:
         assert set(used) == {"md", "txt"}          # each format routed
         # Metadata is preserved through splitting.
         assert {d.metadata["format"] for d in out} == {"md", "txt"}
+
+
+class TestTokenLimit:
+    """Chunks must never exceed the embedding model's token limit, so their
+    tail isn't silently truncated (and lost to retrieval) at embed time."""
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        with patch("src.embeddings.HuggingFaceEmbeddings") as mock_hf:
+            mock_hf.return_value = Mock()
+            yield mock_hf
+
+    def test_token_len_fallback_is_char_based(self, mock_embeddings):
+        # With no real tokenizer (CI / mocked), token_len estimates from chars.
+        from src.embeddings import EmbeddingManager, _FALLBACK_CHARS_PER_TOKEN
+        m = EmbeddingManager(model_name="definitely-not-a-real-model")
+        assert m.token_len("") == 0
+        # ~3 chars/token, rounded up.
+        assert m.token_len("a" * 30) == math.ceil(30 / _FALLBACK_CHARS_PER_TOKEN)
+        assert m.token_len("x") >= 1
+
+    def test_size_cap_under_model_limit(self, mock_embeddings):
+        from src.embeddings import EmbeddingManager, DEFAULT_MAX_TOKENS
+        m = EmbeddingManager()
+        assert m._size_cap() <= DEFAULT_MAX_TOKENS
+
+    def test_no_chunk_exceeds_token_limit(self, mock_embeddings):
+        from src.embeddings import EmbeddingManager
+        m = EmbeddingManager(max_tokens=128)
+        long = "Optimizasyon algoritmaları çok önemlidir. " * 80
+        docs = [Document(page_content=long, metadata={"source": "x", "format": "json"})]
+        out = m.split_documents(docs)
+        assert len(out) > 1
+        for d in out:
+            assert m.token_len(d.page_content) <= m.max_tokens
 
 
 if __name__ == "__main__":

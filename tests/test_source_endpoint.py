@@ -93,9 +93,16 @@ class TestErrors:
             assert r.status_code in (400, 404), f"path={path} got {r.status_code}"
 
     def test_filename_with_turkish_chars(self, client):
+        # Regression: secure_filename ASCII-stripped Turkish letters so the
+        # name no longer matched and every Turkish-named document returned
+        # {"error":"Invalid filename"}. Unicode names must now serve cleanly.
         c, tmp = client
-        # secure_filename may transliterate Turkish chars; verify behaviour
-        # Most importantly: don't crash, return either 200 (if survived) or 400
-        _write(tmp / "algoritma.json", b'{"a": 1}')
-        r = c.get("/source/algoritma.json")
+        _write(tmp / "Bilgisayarla_görme.json", b'{"a": 1}')
+        r = c.get("/source/Bilgisayarla_görme.json")
         assert r.status_code == 200
+        assert "application/json" in r.headers["Content-Type"]
+
+    def test_null_byte_filename_rejected(self, client):
+        c, _ = client
+        r = c.get("/source/doc\x00.json")
+        assert r.status_code in (400, 404)

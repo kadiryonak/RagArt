@@ -3,6 +3,7 @@ Main RAG (Retrieval-Augmented Generation) system implementation.
 """
 
 import hashlib
+import os
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -149,6 +150,7 @@ class TurkishRAGSystem:
         chroma_db_path: str = "./chroma_db",
         embedding_model: Optional[str] = None,
         defer_sparse_build: bool = False,
+        distill_index: bool = False,
     ):
         """
         Initialize the RAG system.
@@ -170,6 +172,11 @@ class TurkishRAGSystem:
         self.api_key = api_key
         self.chroma_db_path = chroma_db_path
         self._defer_sparse_build = defer_sparse_build
+        # Optional LLM distillation of raw text before chunking (off by
+        # default; see src/distill.py). Enabled via constructor or RAG_DISTILL.
+        self.distill_index = distill_index or os.getenv(
+            "RAG_DISTILL", ""
+        ).strip().lower() in ("1", "true", "yes", "on")
         
         # Initialize ChromaDB client
         self.chroma_client = chromadb.PersistentClient(path=chroma_db_path)
@@ -250,27 +257,39 @@ class TurkishRAGSystem:
         self.create_vector_store()
         logger.info(f"{StatusEmoji.SUCCESS} RAG system ready!")
     
-    def create_vector_store(self) -> None:
+    def create_vector_store(self, distill: Optional[bool] = None) -> None:
         """
         Create the vector store from loaded documents.
-        
+
+        Args:
+            distill: Override the system's distill_index setting for this build
+                (None → use self.distill_index). When on, raw text is LLM-
+                distilled before chunking. See src/distill.py.
+
         Raises:
             ValueError: If no documents are loaded
         """
         logger.info(f"{StatusEmoji.DOCUMENT} Loading JSON data...")
         documents = self.document_loader.load_all()
-        
+
         if not documents:
             raise ValueError(
                 f"{StatusEmoji.ERROR} No documents loaded! Check your data folder: {self.data_folder}"
             )
-        
+
+        # Hash the RAW text BEFORE distillation so incremental sync compares
+        # disk content, not the (non-deterministic) distilled output.
+        raw_hashes = self._content_hash_by_source(documents)
+
+        # Optional: distill raw text with the LLM to shrink the index.
+        documents = self._maybe_distill(documents, distill)
+
         # Split documents into chunks
         split_docs = self.embedding_manager.split_documents(documents)
 
-        # Stamp each chunk with its source file's content hash so a later
+        # Stamp each chunk with its source file's RAW content hash so a later
         # incremental sync can tell whether a same-named file actually changed.
-        self._stamp_content_hash(split_docs, self._content_hash_by_source(documents))
+        self._stamp_content_hash(split_docs, raw_hashes)
 
         logger.info(f"{StatusEmoji.DOCUMENT} Created {len(split_docs)} text chunks")
 
@@ -293,6 +312,55 @@ class TurkishRAGSystem:
         self._build_retrievers(split_docs)
 
         logger.info(f"{StatusEmoji.SUCCESS} Vector store created successfully!")
+
+    def _maybe_distill(
+        self,
+        documents: List[Document],
+        override: Optional[bool] = None,
+        only_sources: Optional[set] = None,
+    ) -> List[Document]:
+        """LLM-distill raw text before chunking, when enabled.
+
+        Returns documents unchanged unless distillation is on AND a real LLM
+        provider is configured (the local echo provider can't distill, and its
+        canned output would be rejected by the guardrails anyway). When
+        `only_sources` is given, only those source files are distilled and the
+        rest pass through untouched — used by incremental sync so unchanged
+        files aren't needlessly re-distilled.
+        """
+        on = self.distill_index if override is None else override
+        if not on:
+            return documents
+        if self.model_type == "local":
+            logger.info(
+                f"{StatusEmoji.INFO} Distillation skipped: local provider has no LLM."
+            )
+            return documents
+
+        from src.distill import distill_documents
+
+        if only_sources is None:
+            logger.info(
+                f"{StatusEmoji.LOADING} Distilling {len(documents)} document(s) "
+                "before chunking..."
+            )
+            return distill_documents(documents, self.llm_provider, temperature=0.1)
+
+        # Distill only the named sources; keep the rest, preserving order.
+        targets = [d for d in documents if d.metadata.get("source") in only_sources]
+        if not targets:
+            return documents
+        logger.info(
+            f"{StatusEmoji.LOADING} Distilling {len(targets)} changed document(s) "
+            "before chunking..."
+        )
+        distilled = {
+            id(d): nd
+            for d, nd in zip(targets, distill_documents(
+                targets, self.llm_provider, temperature=0.1
+            ))
+        }
+        return [distilled.get(id(d), d) for d in documents]
 
     @staticmethod
     def _content_hash_by_source(documents: List[Document]) -> Dict[str, str]:
@@ -327,7 +395,7 @@ class TurkishRAGSystem:
         for c in chunks:
             c.metadata["content_hash"] = hashes.get(c.metadata.get("source"), "")
 
-    def sync_index(self) -> Dict[str, Any]:
+    def sync_index(self, distill: Optional[bool] = None) -> Dict[str, Any]:
         """Incrementally sync the vector store with the files on disk.
 
         Embeds only what actually changed:
@@ -352,7 +420,7 @@ class TurkishRAGSystem:
         """
         # No existing collection yet → nothing to diff against, full build.
         if self.vector_store is None:
-            self.create_vector_store()
+            self.create_vector_store(distill=distill)
             return {"mode": "full", "added": [], "removed": [], "updated": [],
                     "added_chunks": 0}
 
@@ -364,7 +432,7 @@ class TurkishRAGSystem:
                 f"{StatusEmoji.WARNING} Could not read existing index "
                 f"({type(e).__name__}: {e}) — falling back to full rebuild."
             )
-            self.create_vector_store()
+            self.create_vector_store(distill=distill)
             return {"mode": "full-rebuild", "added": [], "removed": [],
                     "updated": [], "added_chunks": 0}
 
@@ -405,13 +473,15 @@ class TurkishRAGSystem:
                 f"refreshing {len(to_update)} changed file(s)"
             )
 
-        # 4. Split everything once; stamp hashes; embed only new + changed files.
+        # 4. Distill only the files we're about to (re-)embed, then split
+        #    everything once; stamp RAW hashes; embed only new + changed files.
+        embed_sources = to_add | to_update
+        documents = self._maybe_distill(documents, distill, only_sources=embed_sources)
         all_chunks = (
             self.embedding_manager.split_documents(documents) if documents else []
         )
         self._stamp_content_hash(all_chunks, disk_hash)
 
-        embed_sources = to_add | to_update
         added_chunks = 0
         if embed_sources:
             new_chunks = [
